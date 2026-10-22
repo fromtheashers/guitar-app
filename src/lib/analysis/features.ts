@@ -47,9 +47,11 @@ export const onsetFrameTime = (f: number) => (f * ONSET_HOP + ONSET_SIZE / 2) / 
 export const chromaFrameTime = (f: number) => (f * CHROMA_HOP + CHROMA_SIZE / 2) / SR;
 
 /**
- * Spectral-flux onsets per drum band. With `isolated` (a separated drums track), each
- * frequency is floored at its average level first: the track sits on near-silence,
- * where the log scale would otherwise make faint spill (snare into the kick band) look big.
+ * Spectral-flux onsets per drum band. A full mix uses log magnitudes, so drums stand
+ * out over pads and voices. A separated drums track (`isolated`) uses plain magnitudes:
+ * on near-silence the log scale makes every hit's faint spill (a snare's thump in the
+ * kick band) look as big as the real thing, while plain magnitudes keep the kick
+ * dominant in the low band, the snare in the middle and the cymbals at the top.
  */
 export function onsetFeatures(samples: Float32Array, isolated = false): OnsetFeatures {
   const binHz = SR / ONSET_SIZE;
@@ -67,17 +69,11 @@ export function onsetFeatures(samples: Float32Array, isolated = false): OnsetFea
   const rms = new Float64Array(frames);
   let prev = new Float64Array(half + 1);
   let cur = new Float64Array(half + 1);
-  const floor = new Float64Array(half + 1);
-  if (isolated) {
-    stft(samples, ONSET_SIZE, ONSET_HOP, (_, mag) => {
-      for (let k = 0; k <= half; k++) floor[k] += mag[k] / Math.max(1, frames);
-    });
-  }
 
   stft(samples, ONSET_SIZE, ONSET_HOP, (f, mag) => {
     let e = 0;
     for (let k = 0; k <= half; k++) {
-      cur[k] = Math.log1p(100 * Math.max(floor[k], mag[k]));
+      cur[k] = isolated ? mag[k] : Math.log1p(100 * mag[k]);
       e += mag[k] * mag[k];
     }
     rms[f] = Math.sqrt(e / (half + 1));

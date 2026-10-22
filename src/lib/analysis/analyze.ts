@@ -404,6 +404,16 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
     } else runs.push({ group: p.group, bars: [...p.bars], energy: p.energy });
   }
 
+  // A phrase looped three or more times in a row (a bridge vamp) is its own thing,
+  // even when its chords match a phrase heard once elsewhere (half a chorus).
+  let nextGroup = reps.length;
+  const vamps = new Map<number, number>();
+  for (const r of runs) {
+    if (r.bars.length < 3 * PHRASE || !runs.some((o) => o.group === r.group && o.bars.length <= PHRASE)) continue;
+    if (!vamps.has(r.group)) vamps.set(r.group, nextGroup++);
+    r.group = vamps.get(r.group)!;
+  }
+
   // Two single-phrase groups that appear back to back are one section (a verse or
   // chorus whose second half differs from its first). One copy may stand alone, say
   // a last half-verse before the chorus.
@@ -452,9 +462,9 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
   }
   const last = runs[runs.length - 1];
   if (runs.length > 3 && once(last.group) && !names.has(last.group)) names.set(last.group, "Outro");
-  // Songs often end the way they began: the same group first and last, and nowhere else.
-  const bookends =
-    runs.length > 3 && runs[0].group === last.group && groupCount.get(last.group) === 2 && last.group !== chorus;
+  // Songs often end the way they began: the same group first and last (and maybe
+  // once more in the middle, as an interlude).
+  const bookends = runs.length > 3 && runs[0].group === last.group && last.group !== chorus;
   if (bookends) names.set(last.group, "Intro");
 
   const unnamedBefore = runs.slice(0, Math.max(0, firstChorusRun)).map((r) => r.group).filter((g) => !names.has(g));
@@ -480,7 +490,7 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
   // A lone half-verse straight before a chorus, where the other verses are whole, leads into it.
   const longestVerse = Math.max(0, ...runs.filter((r) => names.get(r.group) === "Verse").map((r) => r.bars.length));
   const nameOf = (r: (typeof runs)[number], i: number) => {
-    if (bookends && i === runs.length - 1) return "Outro";
+    if (bookends && r.group === last.group && i > 0) return i === runs.length - 1 ? "Outro" : "Interlude";
     const name = names.get(r.group)!;
     const leadIn = r.bars.length <= PHRASE && longestVerse > PHRASE && runs[i + 1]?.group === chorus;
     return name === "Verse" && leadIn && ![...names.values()].includes("Pre-Chorus") ? "Pre-Chorus" : name;
