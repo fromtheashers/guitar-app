@@ -1,8 +1,10 @@
-# Splits a song into instruments (bass + everything but vocals and drums), drums and
-# vocals with Demucs, for Chord Window's helper.
+# Splits a song with Demucs (six-track model) for Chord Window's helper into: the
+# harmony to read chords from (bass, piano/keys and pads, without guitar, which in
+# worship music is often lead lines and swells), the drums, and everything else.
 #
 # Reads raw 32-bit float stereo at 44100 Hz on stdin; writes a 16-bit three-channel
-# WAV at 22050 Hz on stdout: instruments, drums, vocals. Nothing is written to disk.
+# WAV at 22050 Hz on stdout: harmony, drums, rest (vocals + guitar). Together the
+# three channels are the whole song. Nothing is written to disk.
 # Uses the graphics card when PyTorch can see one.
 
 import io
@@ -31,7 +33,7 @@ def main() -> None:
     if device == "cpu":
         # Leave cores free so the computer stays usable while a song is separated.
         torch.set_num_threads(max(1, (os.cpu_count() or 2) // 2))
-    model = get_model("htdemucs")
+    model = get_model("htdemucs_6s")
     model.eval()
 
     ref = wav.mean(0)
@@ -41,10 +43,16 @@ def main() -> None:
     stems = stems.cpu() * std + mean
     by_name = dict(zip(model.sources, stems))
 
-    instruments = (by_name["bass"] + by_name["other"]).mean(0)
+    keys = by_name["piano"] + by_name["other"]
+    guitar = by_name["guitar"]
+    # A song carried by guitar alone (no keys or pads) still needs its chords.
+    if float(keys.pow(2).mean()) < 0.1 * float(guitar.pow(2).mean()):
+        keys = keys + guitar
+        guitar = torch.zeros_like(guitar)
+    harmony = (by_name["bass"] + keys).mean(0)
     drums = by_name["drums"].mean(0)
-    vocals = by_name["vocals"].mean(0)
-    out = AF.resample(torch.stack([instruments, drums, vocals]), IN_SR, OUT_SR)
+    rest = (by_name["vocals"] + guitar).mean(0)
+    out = AF.resample(torch.stack([harmony, drums, rest]), IN_SR, OUT_SR)
     peak = float(out.abs().max()) or 1.0
     pcm = (out.T.numpy() / max(1.0, peak) * 32767).astype("<i2")
 

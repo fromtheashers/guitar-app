@@ -51,7 +51,7 @@ export async function fetchYouTubeAudio(url: string, onBytes?: (bytes: number) =
     throw new FetchAudioError("This browser couldn't read the audio YouTube sent. Try Chrome, or the backup option.");
   }
   if (res.headers.get("x-stems") === "1" && decoded.numberOfChannels >= 2) {
-    // Instruments, drums and (third) vocals; all together they're the whole song.
+    // Harmony (bass and keys), drums, and the rest; all together they're the whole song.
     const instruments = decoded.getChannelData(0);
     const drums = decoded.getChannelData(1);
     const samples = new Float32Array(decoded.length);
