@@ -11,7 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const config = JSON.parse(readFileSync(path.join(here, "config.json"), "utf8"));
+// Windows PowerShell 5 writes a byte-order mark, which JSON.parse rejects.
+const config = JSON.parse(readFileSync(path.join(here, "config.json"), "utf8").replace(/^\uFEFF/, ""));
 const site = String(config.site).replace(/\/+$/, "");
 const auth = { authorization: `Bearer ${config.token}` };
 const MAX_BYTES = 60 * 1024 * 1024;

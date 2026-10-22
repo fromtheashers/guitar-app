@@ -20,7 +20,8 @@ Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/downloa
 $configPath = Join-Path $dir "config.json"
 if (Test-Path $configPath) { $token = (Get-Content $configPath | ConvertFrom-Json).token }
 else { $token = -join ((1..40) | ForEach-Object { "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[(Get-Random -Maximum 57)] }) }
-@{ site = $Site; token = $token } | ConvertTo-Json | Set-Content -Encoding utf8 $configPath
+# Written without a byte-order mark (Windows PowerShell 5 adds one with -Encoding utf8).
+[IO.File]::WriteAllText($configPath, (@{ site = $Site; token = $token } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 
 # Start hidden at sign-in, restart if it stops, and keep going on battery.
 $action = New-ScheduledTaskAction -Execute $node -Argument "`"$(Join-Path $dir 'helper.mjs')`"" -WorkingDirectory $dir
