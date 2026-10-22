@@ -337,14 +337,22 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
   const alike = (a: Phrase, b: Phrase, threshold: number) =>
     similarity(a.sig, b.sig) >= threshold && Math.max(a.energy, b.energy) <= 1.6 * Math.min(a.energy, b.energy);
 
-  // Intros and pickups shift the phrases: start them where the most phrases repeat.
+  // Intros and pickups shift the phrases: start them where phrases repeat most closely,
+  // and, between equally good starts, where phrases begin on a chord change.
   let phrases = phrasesFrom(0);
-  let bestRepeats = -1;
+  let bestScore = -1;
   for (let offset = 0; offset < PHRASE && offset < bars.length; offset++) {
     const ps = phrasesFrom(offset);
-    const repeats = ps.filter((p, i) => ps.some((q, j) => j !== i && alike(p, q, 0.75))).length;
-    if (repeats > bestRepeats) {
-      bestRepeats = repeats;
+    // How closely each phrase matches its best repeat elsewhere in the song.
+    const repeats = ps.reduce((sum, p, i) => sum + Math.max(0, ...ps.map((q, j) => (j !== i && alike(p, q, 0) ? similarity(p.sig, q.sig) : 0))), 0);
+    let changes = 0;
+    for (let i = offset || PHRASE; i < bars.length; i += PHRASE) {
+      const prev = bars[i - 1].halves;
+      if (coarse(prev[prev.length - 1].state) !== coarse(bars[i].halves[0].state)) changes++;
+    }
+    const score = repeats + (0.5 * changes) / Math.max(1, ps.length);
+    if (score > bestScore) {
+      bestScore = score;
       phrases = ps;
     }
   }
