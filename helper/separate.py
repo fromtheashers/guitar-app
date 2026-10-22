@@ -6,10 +6,11 @@
 # 22050 Hz back to back on stdout: a stereo one (harmony left, drums right) and a
 # mono one (the rest: vocals and guitar). Together they're the whole song. Plain
 # stereo and mono WAVs decode the same in every browser. Nothing is written to disk.
-# Uses the graphics card when PyTorch can see one.
+# Uses the graphics card when it's free, and the processor otherwise.
 
 import io
 import os
+import subprocess
 import sys
 import wave
 
@@ -30,7 +31,7 @@ def main() -> None:
         sys.exit("ERROR: no audio to separate")
     wav = torch.from_numpy(audio[: audio.size // 2 * 2].reshape(-1, 2).T.copy())
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if gpu_is_free() else "cpu"
     if device == "cpu":
         # Leave cores free so the computer stays usable while a song is separated.
         torch.set_num_threads(max(1, (os.cpu_count() or 2) // 2))
@@ -59,6 +60,23 @@ def main() -> None:
     sys.stdout.buffer.write(wav_bytes(pcm[:, :2]) + wav_bytes(pcm[:, 2:]))
 
 
+def gpu_is_free() -> bool:
+    """Use the graphics card only when nothing else (a game, say) is busy on it."""
+    if not torch.cuda.is_available():
+        return False
+    try:
+        free, _ = torch.cuda.mem_get_info()
+        if free < 2 * 1024**3:
+            return False
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return out.returncode == 0 and int(out.stdout.split()[0]) < 30
+    except Exception:
+        return False
+
+
 def wav_bytes(pcm: np.ndarray) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -67,6 +85,7 @@ def wav_bytes(pcm: np.ndarray) -> bytes:
         w.setframerate(OUT_SR)
         w.writeframes(np.ascontiguousarray(pcm).tobytes())
     return buf.getvalue()
+
 
 if __name__ == "__main__":
     main()

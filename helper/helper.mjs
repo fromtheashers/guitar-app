@@ -14,6 +14,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,6 +65,10 @@ function download(job) {
 function run(cmd, args, input, env) {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, ...env } });
+    // Low priority, so whatever the computer is being used for comes first.
+    try {
+      os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW);
+    } catch {}
     const chunks = [];
     let stderr = "";
     child.stdout.on("data", (c) => chunks.push(c));
