@@ -67,6 +67,11 @@
   grid-column: span 3;
 }
 
+.lookup {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
 .videoRow {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);

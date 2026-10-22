@@ -7,6 +7,7 @@ import type { Song, SongInput } from "@/lib/db";
 import { parseChart } from "@/lib/music/chart";
 import { defaultPresetFor, GROOVE_PRESETS, presetPattern, type StrumPattern } from "@/lib/music/strum";
 import { ALL_KEYS, ALL_MINOR_KEYS, buildView, eventAt } from "@/lib/songView";
+import type { SongGuess as VideoGuess } from "@/lib/videoInfo";
 import { youtubeId } from "@/lib/youtube";
 import { AnalysePanel } from "./AnalysePanel";
 import { ChartView } from "./ChartView";
@@ -48,6 +49,55 @@ export function SongEditor({ song }: { song?: Song }) {
 
   const videoId = youtubeId(draft.youtubeUrl);
   const { host: ytHost, player, ready: ytReady, state: ytState, error: ytError } = useYouTube(videoId);
+
+  // Pasting a new link reads the video's page and fills whatever is still empty.
+  const [lookup, setLookup] = useState<{ busy: boolean; text: string | null }>({ busy: false, text: null });
+  const lookedUp = useRef<string | null>(song ? youtubeId(song.youtubeUrl) : null);
+  const fillFromVideo = useEffectEvent(async (id: string) => {
+    setLookup({ busy: true, text: null });
+    try {
+      const res = await fetch(`/api/video-info?url=${encodeURIComponent(id)}`);
+      const body = (await res.json().catch(() => ({}))) as { guess?: VideoGuess; error?: string };
+      if (!res.ok || !body.guess) {
+        setLookup({ busy: false, text: body.error ?? "Couldn't read the video's details. Fill them in by hand." });
+        return;
+      }
+      const g = body.guess;
+      // Only fields that are still empty; anything the teacher typed stays.
+      const patch: Partial<SongInput> = {};
+      const filled: string[] = [];
+      const fill = <K extends keyof SongInput>(when: boolean, k: K, v: SongInput[K] | undefined, label: string) => {
+        if (when && v !== undefined) {
+          patch[k] = v;
+          filled.push(label);
+        }
+      };
+      const noChart = !draft.chart.trim();
+      fill(!draft.title.trim(), "title", g.title, "title");
+      fill(!draft.artist.trim(), "artist", g.artist, "artist");
+      fill(!draft.spotifyUrl.trim(), "spotifyUrl", g.spotifyUrl, "Spotify link");
+      fill(!draft.bpm, "bpm", g.bpm, "tempo");
+      // Key and time signature have defaults, so only set them before there's a chart.
+      fill(noChart, "originalKey", g.key, "key");
+      fill(noChart, "beatsPerBar", g.beatsPerBar, "time signature");
+      setDraft((d) => ({ ...d, ...patch }));
+      const keyNote = g.key ? "" : " The description doesn't give a key; Listen and draft will work it out from the audio.";
+      setLookup({
+        busy: false,
+        text: (filled.length ? `Filled in the ${list(filled)} from YouTube. Check they're right.` : "Nothing new to fill in from YouTube.") + keyNote,
+      });
+    } catch {
+      setLookup({ busy: false, text: "Couldn't reach YouTube. Fill the details in by hand." });
+    }
+  });
+  useEffect(() => {
+    if (!videoId || lookedUp.current === videoId) return;
+    const t = window.setTimeout(() => {
+      lookedUp.current = videoId;
+      void fillFromVideo(videoId);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [videoId]);
 
   const chart = useMemo(() => parseChart(draft.chart, draft.beatsPerBar), [draft.chart, draft.beatsPerBar]);
   const view = useMemo(
@@ -209,6 +259,11 @@ export function SongEditor({ song }: { song?: Song }) {
               aria-invalid={Boolean(draft.youtubeUrl) && !videoId}
             />
             {draft.youtubeUrl && !videoId && <small className="error-text">That doesn&apos;t look like a YouTube link.</small>}
+            {videoId && (lookup.busy || lookup.text) && (
+              <small className={styles.lookup} role="status">
+                {lookup.busy ? "Reading the video's details…" : lookup.text}
+              </small>
+            )}
           </label>
           <label className={`field ${styles.wide}`}>
             <span>Spotify link (optional, for a Listen button)</span>
@@ -431,4 +486,8 @@ function useFollow(player: React.RefObject<{ getCurrentTime(): number } | null>,
     return () => cancelAnimationFrame(raf.current);
   }, [player, playing]);
   return t;
+}
+
+function list(items: string[]) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
