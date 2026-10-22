@@ -2,7 +2,7 @@
 
 A practice app for beginner guitar students learning worship songs. Students open a song and see the chords, a strum pattern based on the track's drums, and chord shapes, all moving in time with the YouTube video. Easy mode simplifies chords and picks a capo; advanced mode shows the full voicings and accents.
 
-The teacher signs in with a passcode, pastes a YouTube link, and presses **Draft from YouTube**: the server streams the video's audio through yt-dlp to the browser, which works out the key, tempo, chords, sections, timings and per-section strum patterns in the browser, and writes a draft chart to check and save. Audio is processed in memory and never stored. A backup option on desktop Chrome or Edge captures the tab's audio while the video plays instead.
+The teacher signs in with a passcode, pastes a YouTube link, and presses **Draft from YouTube**: the server streams the video's audio through yt-dlp to the browser, which runs a trained chord-recognition model (BTC, MIT licence, in `public/models/`) and works out the key, tempo, chords, sections, timings and per-section strum patterns in the browser, and writes a draft chart to check and save. Audio is processed in memory and never stored. A backup option on desktop Chrome or Edge captures the tab's audio while the video plays instead.
 
 Charts hold chords and section labels, plus optional short lyric cues.
 

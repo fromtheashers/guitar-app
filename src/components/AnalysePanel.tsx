@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { analyzeAudio, type AnalysisResult } from "@/lib/analysis/analyze";
+import { chordProbabilities, type ChordProbs } from "@/lib/analysis/chordModel";
+import { cqtFrames } from "@/lib/analysis/cqt";
 import { FetchAudioError, fetchYouTubeAudio } from "@/lib/analysis/fetchAudio";
 import { CaptureError, micCaptureSupported, startMicCapture, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
@@ -51,10 +53,22 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
   );
 
   const analyse = async (samples: Float32Array, toVideoTime?: (t: number) => number | null) => {
+    // The trained chord model does the chords; if it can't load, the built-in engine still drafts.
+    let chordProbs: ChordProbs | undefined;
+    try {
+      setPhase({ kind: "working", fraction: 0.02, stage: "Loading the chord model" });
+      const frames = await cqtFrames(samples, () => new Promise((r) => setTimeout(r, 0)));
+      setPhase({ kind: "working", fraction: 0.15, stage: "Recognising chords" });
+      chordProbs = await chordProbabilities(frames, (f) => setPhase({ kind: "working", fraction: 0.15 + 0.35 * f, stage: "Recognising chords" }));
+    } catch (e) {
+      console.warn("Chord model unavailable, using the built-in engine:", e);
+    }
+    const base = chordProbs ? 0.5 : 0;
     const result = await analyzeAudio(samples, {
       beatsPerBar,
       toVideoTime,
-      onProgress: (fraction, stage) => setPhase({ kind: "working", fraction, stage }),
+      chordProbs,
+      onProgress: (fraction, stage) => setPhase({ kind: "working", fraction: base + (1 - base) * fraction, stage }),
     });
     onResult(result);
     setPhase({ kind: "done", result });

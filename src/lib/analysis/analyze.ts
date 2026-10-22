@@ -1,7 +1,7 @@
 // Turns audio into a draft chart: tempo, key, chords per bar, sections and a
 // drum-based strum pattern per section. Runs entirely in memory.
 
-import { formatChord, keyName, prefersFlats } from "../music/chords";
+import { formatChord, keyName, mod12, prefersFlats } from "../music/chords";
 import { ChartBar, ChartSection, sectionKind, serializeChart } from "../music/chart";
 import { DrumGroove, patternFromGroove, StrumPattern } from "../music/strum";
 import { estimateTempo, trackBeats } from "./beats";
@@ -14,7 +14,10 @@ import {
   onsetFeatures,
   onsetFrameTime,
 } from "./features";
-import { BeatHarmony, detectKey, labelBeats, NO_CHORD, slashBass, STATES } from "./harmony";
+import type { ChordProbs } from "./chordModel";
+import { VOCAB } from "./chordModel";
+import { BeatHarmony, detectKey, labelBeats, slashBass, STATES } from "./harmony";
+import { beatProbabilities, labelBeatsWithModel } from "./modelHarmony";
 
 export interface AnalysisOptions {
   /** Beats per bar as written in the chart: 4, 3 or 6 (6/8). */
@@ -22,6 +25,8 @@ export interface AnalysisOptions {
   /** Maps seconds into the captured audio to seconds in the video; null if unknown. */
   toVideoTime?: (audioSeconds: number) => number | null;
   onProgress?: (fraction: number, stage: string) => void;
+  /** Output of the trained chord model (chordModel.ts). Without it, chords come from chroma templates. */
+  chordProbs?: ChordProbs;
 }
 
 export interface AnalysisResult {
@@ -88,8 +93,29 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
   }
   const total = new Float64Array(12);
   beatHarmony.forEach((b) => b.chroma.forEach((v, i) => (total[i] += v * Math.min(1, b.energy / (silence * 5 || 1)))));
-  const key = detectKey(total);
-  const labels = labelBeats(beatHarmony, key, silence);
+  let key = detectKey(total);
+  // Chord vocabulary: the trained model's 170 classes, or 24 triads from templates.
+  let states: (ChordName | null)[];
+  let labels: number[];
+  let beatProbs: Float64Array[] | null = null;
+  if (opts.chordProbs) {
+    states = VOCAB;
+    beatProbs = beatProbabilities(opts.chordProbs, beatSec, ibi);
+    labels = labelBeatsWithModel(beatProbs);
+    // The model's chords say more about the key than raw chroma does.
+    const tones = new Float64Array(12);
+    labels.forEach((l) => {
+      const st = VOCAB[l];
+      if (!st) return;
+      tones[st.root] += 1;
+      tones[mod12(st.root + (st.minor ? 3 : 4))] += 0.8;
+      tones[mod12(st.root + 7)] += 0.8;
+    });
+    if (tones.some((v) => v > 0)) key = detectKey(tones);
+  } else {
+    states = STATES.map((st) => st && { ...st, quality: st.minor ? "m" : "" });
+    labels = labelBeats(beatHarmony, key, silence);
+  }
 
   // Downbeat: the phase where the kick is strongest and chords tend to change.
   const kickAt = beatFrames.map((f) => peakNear(onset.kick, f, 3));
@@ -120,7 +146,7 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
       for (let i = start + sp; i < start + end; i++) counts.set(labels[i], (counts.get(labels[i]) ?? 0) + (i === start + sp ? 1.1 : 1));
       const state = [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
       let bass: number | undefined;
-      const st = STATES[state];
+      const st = states[state];
       if (st) {
         const h = averageHarmony(harm, beatSec[start + sp], beatSec[start + end] ?? beatSec[start + sp] + ibi * (end - sp));
         bass = slashBass(h.bass, st);
@@ -133,13 +159,18 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
   }
 
   // Trim silent bars at the start and end.
-  const isEmpty = (b: Bar) => b.halves.every((h) => h.state === NO_CHORD);
+  const isEmpty = (b: Bar) => b.halves.every((h) => !states[h.state]);
   while (bars.length && isEmpty(bars[0])) bars.shift();
   while (bars.length && isEmpty(bars[bars.length - 1])) bars.pop();
 
   progress(0.8, "Finding verses and choruses");
   await tick();
-  const sections = findSections(bars);
+  // Sections compare chords coarsely (root and major/minor), so "B" and "Bmaj7" count as the same.
+  const coarse = (state: number) => {
+    const st = states[state];
+    return st ? `${st.root}${st.minor ? "m" : ""}` : "N";
+  };
+  const sections = findSections(bars, coarse);
 
   progress(0.9, "Turning the drums into strum patterns");
   await tick();
@@ -168,7 +199,7 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
     label: s.label,
     kind: sectionKind(s.label),
     bars: s.bars.map((b): ChartBar => ({
-      events: b.halves.map((h) => ({ chord: symbolFor(h.state, h.bass, flats), beat: h.beat * chartBeatsPerPulse, index: -1 })),
+      events: b.halves.map((h) => ({ chord: symbolFor(states[h.state], h.bass, flats), beat: h.beat * chartBeatsPerPulse, index: -1 })),
     })),
   }));
   const timings: (number | null)[] = [];
@@ -180,8 +211,10 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
 
   const fit: number[] = [];
   beatHarmony.forEach((b, i) => {
-    const st = STATES[labels[i]];
-    if (st && b.energy >= silence) fit.push(b.chroma[st.root] / (Math.max(...b.chroma) || 1));
+    const st = states[labels[i]];
+    if (!st || b.energy < silence) return;
+    // With the model, confidence is how sure it was; otherwise how well the chroma fits.
+    fit.push(beatProbs ? beatProbs[i][labels[i]] : b.chroma[st.root] / (Math.max(...b.chroma) || 1));
   });
   const chordConfidence = mean(fit);
 
@@ -197,10 +230,15 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
   };
 }
 
-function symbolFor(state: number, bass: number | undefined, flats: boolean): string | null {
-  const st = STATES[state];
+interface ChordName {
+  root: number;
+  minor: boolean;
+  quality: string;
+}
+
+function symbolFor(st: ChordName | null, bass: number | undefined, flats: boolean): string | null {
   if (!st) return null;
-  return formatChord({ root: st.root, quality: st.minor ? "m" : "", bass }, flats);
+  return formatChord({ root: st.root, quality: st.quality, bass }, flats);
 }
 
 function averageHarmony(h: ReturnType<typeof chromaFeatures>, a: number, b: number): BeatHarmony {
@@ -280,13 +318,13 @@ interface FoundSection {
  * Split bars into sections by grouping repeated 4-bar phrases, then name the groups:
  * the loudest repeated group is the chorus, the group before it the verse, and so on.
  */
-function findSections(bars: Bar[]): FoundSection[] {
+function findSections(bars: Bar[], coarse: (state: number) => string): FoundSection[] {
   if (!bars.length) return [];
   const PHRASE = 4;
   const phrases: { bars: Bar[]; sig: string[]; energy: number; group: number }[] = [];
   for (let i = 0; i < bars.length; i += PHRASE) {
     const pb = bars.slice(i, i + PHRASE);
-    const sig = pb.flatMap((b) => [String(b.halves[0].state), String(b.halves[b.halves.length - 1].state)]);
+    const sig = pb.flatMap((b) => [coarse(b.halves[0].state), coarse(b.halves[b.halves.length - 1].state)]);
     phrases.push({ bars: pb, sig, energy: mean(pb.map((b) => b.energy)), group: -1 });
   }
   const reps: string[][] = [];

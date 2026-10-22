@@ -43,3 +43,6 @@ next-env.d.ts
 
 # yt-dlp binary, downloaded at build time
 /bin/
+
+# onnxruntime-web wasm, copied from node_modules at build time
+/public/ort/

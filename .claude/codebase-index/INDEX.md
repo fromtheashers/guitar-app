@@ -19,7 +19,7 @@
 
 ## Key flows
 - Practice: `songs/[id]/page.tsx` → `getSong` → `PracticeView` → `buildView` (songView) → `ChartView` + `StrumGrid` + `ChordDiagram`; `useYouTube` time drives `eventAt`.
-- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → if HELPER_TOKEN: `fetchViaHelper` (helperQueue.ts; home helper long-polls `api/helper/next`, posts to `api/helper/result/[id]`) else `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) → decode at 22050 Hz → `analyzeAudio`.
+- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → if HELPER_TOKEN: `fetchViaHelper` (helperQueue.ts; home helper long-polls `api/helper/next`, posts to `api/helper/result/[id]`) else `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) → decode at 22050 Hz → `cqtFrames` (cqt.ts) → `chordProbabilities` (chordModel.ts, BTC ONNX model in public/models, onnxruntime-web wasm copied to public/ort by scripts/copy-ort.mjs) → `analyzeAudio({chordProbs})`; if the model fails to load, analyzeAudio uses the template engine.
 - Drafting (backup, desktop Chrome/Edge): `SongEditor` → `AnalysePanel` → `startTabCapture` (capture.ts) → `analyzeAudio` (analyze.ts → features/beats/harmony) → chart text + timings + patterns into the draft.
 - Saving: editor `fetch` → `api/songs[/id]` → `requireEditor` (http.ts/auth.ts) → `songInput` (validate.ts) → `createSong`/`updateSong` (db.ts).
 - Link auto-fill: `SongEditor` (on new videoId) → `GET api/video-info` (teacher only) → fetchVideoFacts + guessSong → fills only empty fields.
@@ -41,8 +41,11 @@ Purpose: DrumGroove → StrumPattern (D/U/x/-, accents). Exports: strokesFromGro
 ### features.ts — SR=22050; onsetFeatures (kick/snare/hat bands), chromaFeatures (tuning, bass chroma), frame-time helpers.
 ### beats.ts — estimateTempo (autocorrelation, 100 BPM prior), trackBeats (DP), fillGaps.
 ### harmony.ts — detectKey (Krumhansl), STATES/NO_CHORD, labelBeats (Viterbi), slashBass.
+### cqt.ts — cqtFrames(samples) → {data (log CQT, 144 bins, frame-major), times}; multirate CQT matching librosa/BTC features.
+### chordModel.ts — trained BTC model (MIT, 170 classes) via onnxruntime-web, single-threaded. Exports VOCAB, CLASSES, chordProbabilities(frames) → {probs, times}.
+### modelHarmony.ts — beatProbabilities (frame → beat), labelBeatsWithModel (Viterbi with change penalty).
 ### analyze.ts
-Purpose: whole-song analysis. Exports: analyzeAudio(samples, {beatsPerBar, toVideoTime, onProgress}) → AnalysisResult {bpm, key, chart, timings, patterns, confidence}. Notes: downbeat from kick + chord changes, half-bar chords, 4-bar phrase grouping into sections named by energy, groove per section kind; 6/8 tracked as 2 pulses.
+Purpose: whole-song analysis. Exports: analyzeAudio(samples, {beatsPerBar, toVideoTime, onProgress, chordProbs?}) → AnalysisResult {bpm, key, chart, timings, patterns, confidence}. Notes: with chordProbs, chords come from the model and the key from its chord tones; downbeat from kick + chord changes, half-bar chords, 4-bar phrase grouping into sections named by energy, groove per section kind; 6/8 tracked as 2 pulses.
 ### fetchAudio.ts — fetchYouTubeAudio(url, onBytes, signal) → mono Float32Array at SR; picks m4a or webm by browser codec support.
 ### capture.ts — also startMicCapture (microphone backup) and micCaptureSupported.
 ### capture.ts (tab)
@@ -67,7 +70,7 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### StrumGrid.tsx — drum rows + strum row; editable when onChange given.
 ### ChordDiagram.tsx — SVG chord box (pickShape), sizes s/m/l.
 ### SongEditor.tsx — teacher song editor: details, video, AnalysePanel, tap-to-sync, chart text + live preview, per-section patterns, notes, save (Ctrl+S)/delete.
-### AnalysePanel.tsx — "Listen and draft" flow around capture + analyzeAudio, with progress, summary and undo.
+### AnalysePanel.tsx — "Draft from YouTube" (plus mic/tab backups) → chord model → analyzeAudio, with progress, summary and undo.
 ### SetlistEditor.tsx — name, description, ordered songs with per-song key.
 ### useYouTube.ts — IFrame API hook → {host, player, ready, state, error}; PLAYING, ENDED.
 ### NavLinks.tsx (active nav, Suspense-wrapped), LoginForm.tsx (LoginForm, SignOutButton), TeacherGate.tsx (teacherGate()), SongList.tsx, DbNotice.tsx, Mark.tsx.

@@ -74,7 +74,8 @@ export function isMinor(chord: Chord): boolean {
 }
 
 /** Keys spelled with flats. Minor keys use their relative major. */
-const FLAT_KEYS = new Set([5, 10, 3, 8, 1, 6]); // F Bb Eb Ab Db Gb
+// F# is named with sharps (keyName says "F#"), so its chords are too.
+const FLAT_KEYS = new Set([5, 10, 3, 8, 1]); // F Bb Eb Ab Db
 
 export interface Key {
   tonic: number;
