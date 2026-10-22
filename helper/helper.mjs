@@ -62,8 +62,17 @@ for (;;) {
       await wait(60_000);
       continue;
     }
+    if (res.status === 204) {
+      backoff = 2000;
+      continue;
+    }
+    if (res.status !== 200) {
+      // The site is restarting or erroring (e.g. 502 during a Render deploy): back off.
+      await wait(backoff);
+      backoff = Math.min(backoff * 2, 60_000);
+      continue;
+    }
     backoff = 2000;
-    if (res.status !== 200) continue;
     const job = await res.json();
     log(`Fetching ${job.videoId}…`);
     const result = await download(job);
