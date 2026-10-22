@@ -50,6 +50,34 @@
   font-size: 14px;
 }
 
+/* Play, pause and stop. On phones it floats at the bottom of the screen, so it's
+   always in reach while you scroll the chart. */
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.transport :global(.btn) {
+  gap: 8px;
+}
+
+.play {
+  min-width: 108px;
+}
+
+.skip {
+  font-variant-numeric: tabular-nums;
+}
+
+.clock {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;
@@ -233,9 +261,29 @@
   white-space: pre-wrap;
 }
 
+@media (max-width: 400px) {
+  .clock {
+    display: none;
+  }
+}
+
 @media (max-width: 960px) {
   .top {
     grid-template-columns: 1fr;
+  }
+
+  .page {
+    padding-bottom: 76px;
+  }
+
+  .transport {
+    position: fixed;
+    z-index: 20;
+    inset: auto 0 0;
+    padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    flex-wrap: nowrap;
   }
 
   .now {
@@ -244,6 +292,18 @@
 }
 
 @media (max-width: 520px) {
+  .transport {
+    gap: 6px;
+  }
+
+  .transport :global(.btn) {
+    padding: 0 12px;
+  }
+
+  .play {
+    min-width: 96px;
+  }
+
   .big {
     font-size: 56px;
   }

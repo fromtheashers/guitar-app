@@ -14,12 +14,12 @@
 - `src/lib/`: server helpers (db, auth, validation, http) and client view-model (`songView.ts`).
 - `src/components/`: client UI (practice view, chart, strum grid, chord diagrams, editors, YouTube hook).
 - `src/app/`: pages and API routes.
-- `helper/`: home-computer YouTube helper (helper.mjs, Windows setup.ps1 that installs Node + yt-dlp and a logon task).
+- `helper/`: home-computer YouTube helper (helper.mjs, Windows setup.ps1 that installs Node + yt-dlp and a logon task; optional separate.py runs Demucs six-track separation, configured by separator.json next to helper.mjs, GPU only when nvidia-smi shows it free, low process priority).
 - `.claude/skills/`: vendored agent skills (not app code; eslint ignores it).
 
 ## Key flows
 - Practice: `songs/[id]/page.tsx` → `getSong` → `PracticeView` → `buildView` (songView) → `ChartView` + `StrumGrid` + `ChordDiagram`; `useYouTube` time drives `eventAt`.
-- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → if HELPER_TOKEN: `fetchViaHelper` (helperQueue.ts; home helper long-polls `api/helper/next`, posts to `api/helper/result/[id]`) else `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) (optionally the helper separates with helper/separate.py (Demucs) and sends a 3-channel WAV: instruments, drums, vocals, flagged x-stems) → decode at 22050 Hz → `cqtFrames` (on the instruments when separated) (cqt.ts) → `chordProbabilities` (chordModel.ts, BTC ONNX model in public/models, onnxruntime-web wasm copied to public/ort by scripts/copy-ort.mjs) → `analyzeAudio({chordProbs})`; if the model fails to load, analyzeAudio uses the template engine.
+- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → if HELPER_TOKEN: `fetchViaHelper` (helperQueue.ts; home helper long-polls `api/helper/next`, posts to `api/helper/result/[id]`) else `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) (optionally the helper separates with helper/separate.py and sends a stereo WAV (harmony = bass+keys+pads, drums) followed by a mono WAV (vocals+guitar), flagged x-stems; fetchAudio splits them by RIFF size) → decode at 22050 Hz → `cqtFrames` (on the instruments when separated) (cqt.ts) → `chordProbabilities` (chordModel.ts, BTC ONNX model in public/models, onnxruntime-web wasm copied to public/ort by scripts/copy-ort.mjs) → `analyzeAudio({chordProbs})`; if the model fails to load, analyzeAudio uses the template engine.
 - Drafting (backup, desktop Chrome/Edge): `SongEditor` → `AnalysePanel` → `startTabCapture` (capture.ts) → `analyzeAudio` (analyze.ts → features/beats/harmony) → chart text + timings + patterns into the draft.
 - Saving: editor `fetch` → `api/songs[/id]` → `requireEditor` (http.ts/auth.ts) → `songInput` (validate.ts) → `createSong`/`updateSong` (db.ts).
 - Link auto-fill: `SongEditor` (on new videoId) → `GET api/video-info` (teacher only) → fetchVideoFacts + guessSong → fills only empty fields.
@@ -38,7 +38,7 @@ Purpose: DrumGroove → StrumPattern (D/U/x/-, accents). Exports: strokesFromGro
 
 ## src/lib/analysis
 ### dsp.ts — fft, hann, resample, stft, percentile, mean.
-### features.ts — SR=22050; onsetFeatures (kick/snare/hat bands), chromaFeatures (tuning, bass chroma), frame-time helpers.
+### features.ts — SR=22050; onsetFeatures(samples, isolated?) (kick/snare/hat bands; isolated = plain-magnitude flux for a separated drums track), chromaFeatures (tuning, bass chroma), frame-time helpers.
 ### beats.ts — estimateTempo (autocorrelation, 100 BPM prior), trackBeats (DP), fillGaps.
 ### harmony.ts — detectKey (Krumhansl), STATES/NO_CHORD, labelBeats (Viterbi), slashBass.
 ### cqt.ts — cqtFrames(samples) → {data (log CQT, 144 bins, frame-major), times}; multirate CQT matching librosa/BTC features.
@@ -65,14 +65,14 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### sections.ts (sectionHue), youtube.ts (youtubeId), brand.ts (APP_NAME placeholder).
 
 ## src/components
-### PracticeView.tsx — student practice screen: video, mode/key/capo/numbers/speed controls (saved in localStorage), now pane, strum grid, chart following the video, section looping, shortcuts.
+### PracticeView.tsx — student practice screen: video, mode/key/capo/numbers/speed controls (saved in localStorage), now pane, strum grid, chart following the video, section looping, shortcuts (space, arrows). Transport row: Play/Pause, Stop (pause + back to 0:00, clears loop), ±5 s, clock; fixed to the bottom of the screen at ≤960px.
 ### ChartView.tsx — chart as leaded panes per section; props view, beatsPerBar, activeEvent, onSeek, onLoopSection, loopedSection.
 ### StrumGrid.tsx — drum rows + strum row; editable when onChange given.
 ### ChordDiagram.tsx — SVG chord box (pickShape), sizes s/m/l.
 ### SongEditor.tsx — teacher song editor: details, video, AnalysePanel, tap-to-sync, chart text + live preview, per-section patterns, notes, save (Ctrl+S)/delete.
 ### AnalysePanel.tsx — "Draft from YouTube" (plus mic/tab backups) → chord model → analyzeAudio, with progress, summary and undo.
 ### SetlistEditor.tsx — name, description, ordered songs with per-song key.
-### useYouTube.ts — IFrame API hook → {host, player, ready, state, error}; PLAYING, ENDED.
+### useYouTube.ts — IFrame API hook → {host, player, ready, state, error}; PLAYING, BUFFERING, ENDED.
 ### NavLinks.tsx (active nav, Suspense-wrapped), LoginForm.tsx (LoginForm, SignOutButton), TeacherGate.tsx (teacherGate()), SongList.tsx, DbNotice.tsx, Mark.tsx.
 
 ## src/app

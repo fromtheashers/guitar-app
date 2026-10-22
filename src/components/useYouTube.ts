@@ -28,6 +28,7 @@ declare global {
 }
 
 export const PLAYING = 1;
+export const BUFFERING = 3;
 export const ENDED = 0;
 
 let apiPromise: Promise<YTNamespace> | null = null;

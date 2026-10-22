@@ -9,7 +9,7 @@ import { youtubeId } from "@/lib/youtube";
 import { ChartView } from "./ChartView";
 import { ChordDiagram } from "./ChordDiagram";
 import { StrumGrid } from "./StrumGrid";
-import { PLAYING, useYouTube } from "./useYouTube";
+import { BUFFERING, PLAYING, useYouTube } from "./useYouTube";
 import styles from "./PracticeView.module.css";
 
 const RATES = [0.5, 0.75, 0.9, 1];
@@ -49,10 +49,14 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const [rate, setRate] = useState(1);
   const [loop, setLoop] = useState<{ section: number; a: number; b: number } | null>(null);
   const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const videoId = youtubeId(song.youtubeUrl);
   const { host: ytHost, player, ready: ytReady, state: ytState, error: ytError } = useYouTube(videoId);
   const playing = ytState === PLAYING;
+  // Buffering counts as playing for the button, so it doesn't flicker to "Play".
+  const rolling = playing || ytState === BUFFERING;
 
   const view = useMemo(() => buildView(song, { mode, key, capo, numbers }), [song, mode, key, capo, numbers]);
   const autoCapo = useMemo(() => buildView(song, { mode, key, capo: "auto", numbers: false }).capo, [song, mode, key]);
@@ -67,6 +71,7 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
       if (p) {
         const t = p.getCurrentTime();
         setTime(t);
+        setDuration(p.getDuration());
         if (loop && t >= loop.b) p.seekTo(loop.a, true);
       }
       raf = requestAnimationFrame(tick);
@@ -108,16 +113,39 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
 
   const section = view.sections[position.section] ?? view.sections[0];
 
-  const seek = useCallback(
-    (t: number) => {
-      const p = player.current;
-      if (!p) return;
-      p.seekTo(Math.max(0, t - 0.15), true);
-      p.playVideo();
-      setTime(t);
-    },
-    [player],
-  );
+  const seek = (t: number) => {
+    const p = player.current;
+    if (!p) return;
+    p.seekTo(Math.max(0, t - 0.15), true);
+    p.playVideo();
+    setTime(t);
+  };
+
+  const playPause = () => {
+    const p = player.current;
+    if (!p) return;
+    if (rolling) p.pauseVideo();
+    else p.playVideo();
+  };
+
+  // Stop: pause and go back to the start, ready to play from the top.
+  const stop = () => {
+    const p = player.current;
+    if (!p) return;
+    p.pauseVideo();
+    p.seekTo(0, true);
+    setLoop(null);
+    setTime(0);
+    if (follow) chartRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+
+  const skip = (by: number) => {
+    const p = player.current;
+    if (!p) return;
+    const t = Math.max(0, p.getCurrentTime() + by);
+    p.seekTo(t, true);
+    setTime(t);
+  };
 
   const toggleLoop = (si: number) => {
     const s = view.sections[si];
@@ -151,7 +179,6 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   }, [player]);
 
   // Keep the bar playing now on screen.
-  const chartRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!follow || !playing) return;
     const el = chartRef.current?.querySelector("[data-active]");
@@ -172,6 +199,28 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
             {videoId ? <div ref={ytHost} className={styles.frame} /> : <div className={styles.noVideo}>No video for this song yet.</div>}
             {ytError && <p className={styles.videoError}>{ytError}</p>}
           </div>
+          {videoId && (
+            <div className={styles.transport} role="group" aria-label="Playback">
+              <button type="button" className={`btn btn-primary ${styles.play}`} onClick={playPause} disabled={!ytReady}>
+                {rolling ? <PauseIcon /> : <PlayIcon />}
+                {rolling ? "Pause" : "Play"}
+              </button>
+              <button type="button" className="btn" onClick={stop} disabled={!ytReady}>
+                <StopIcon />
+                Stop
+              </button>
+              <button type="button" className={`btn btn-quiet ${styles.skip}`} onClick={() => skip(-5)} disabled={!ytReady} aria-label="Back 5 seconds">
+                −5s
+              </button>
+              <button type="button" className={`btn btn-quiet ${styles.skip}`} onClick={() => skip(5)} disabled={!ytReady} aria-label="Forward 5 seconds">
+                +5s
+              </button>
+              <span className={styles.clock} aria-hidden="true">
+                {clock(time)}
+                {duration > 0 && ` / ${clock(duration)}`}
+              </span>
+            </div>
+          )}
           <div className={styles.controls}>
             <div className="segmented" role="group" aria-label="Difficulty">
               <button type="button" aria-pressed={easy} onClick={() => setMode("easy")}>Easy</button>
@@ -315,3 +364,24 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
     </div>
   );
 }
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+const PlayIcon = () => (
+  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+    <path d="M4 2.5v11l9-5.5z" fill="currentColor" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+    <rect x="3" y="2.5" width="3.5" height="11" rx="1" fill="currentColor" />
+    <rect x="9.5" y="2.5" width="3.5" height="11" rx="1" fill="currentColor" />
+  </svg>
+);
+
+const StopIcon = () => (
+  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+    <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" />
+  </svg>
+);
