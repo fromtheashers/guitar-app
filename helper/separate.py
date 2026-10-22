@@ -65,14 +65,15 @@ def gpu_is_free() -> bool:
     if not torch.cuda.is_available():
         return False
     try:
-        free, _ = torch.cuda.mem_get_info()
-        if free < 2 * 1024**3:
-            return False
+        # Ask the driver, not PyTorch: on Windows PyTorch can't see what a game is using.
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=5,
         )
-        return out.returncode == 0 and int(out.stdout.split()[0]) < 30
+        if out.returncode != 0:
+            return False
+        busy, used, total = (int(v) for v in out.stdout.splitlines()[0].split(","))
+        return busy < 30 and total - used >= 2048
     except Exception:
         return False
 
