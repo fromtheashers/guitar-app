@@ -117,34 +117,32 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
     labels = labelBeats(beatHarmony, key, silence);
   }
 
-  // Downbeat: the phase where the kick is strongest and chords tend to change.
+  // Downbeats: where the kick is strongest and chords tend to change. Tracked bar by
+  // bar, because the beat tracker sometimes gains or drops a beat mid-song.
   const kickAt = beatFrames.map((f) => peakNear(onset.kick, f, 3));
-  let phase = 0;
-  let phaseScore = -Infinity;
-  for (let p = 0; p < pulsesPerBar; p++) {
-    let s = 0;
-    for (let i = p; i < labels.length; i += pulsesPerBar) {
-      s += kickAt[i] ?? 0;
-      if (i > 0 && labels[i] !== labels[i - 1]) s += 1.5 * mean(kickAt);
-    }
-    if (s > phaseScore) {
-      phaseScore = s;
-      phase = p;
-    }
-  }
+  const downbeats = findDownbeats(labels, kickAt, pulsesPerBar);
 
   // Bars and their chords (changes allowed on beat 1 and halfway through).
   const bars: Bar[] = [];
-  const splits = pulsesPerBar === 4 ? [0, 2] : [0];
-  for (let start = phase; start + pulsesPerBar <= labels.length; start += pulsesPerBar) {
-    const frames = beatFrames.slice(start, start + pulsesPerBar + 1);
-    if (frames.length < pulsesPerBar + 1) frames.push(frames[frames.length - 1] + ibi * ONSET_FPS);
+  for (let d = 0; d + 1 < downbeats.length; d++) {
+    const start = downbeats[d];
+    const len = downbeats[d + 1] - start;
+    const splits = pulsesPerBar === 4 ? [0, 2] : [0];
+    const frames = beatFrames.slice(start, start + len + 1);
+    if (frames.length < len + 1) frames.push(frames[frames.length - 1] + ibi * ONSET_FPS);
     const halves: Bar["halves"] = [];
-    splits.forEach((sp, k) => {
-      const end = splits[k + 1] ?? pulsesPerBar;
+    const majority = (from: number, to: number) => {
       const counts = new Map<number, number>();
-      for (let i = start + sp; i < start + end; i++) counts.set(labels[i], (counts.get(labels[i]) ?? 0) + (i === start + sp ? 1.1 : 1));
-      const state = [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
+      for (let i = from; i < to; i++) counts.set(labels[i], (counts.get(labels[i]) ?? 0) + (i === from ? 1.1 : 1));
+      return [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
+    };
+    const whole = majority(start, start + len);
+    splits.forEach((sp, k) => {
+      const end = splits[k + 1] ?? len;
+      // A half bar gets its own chord only if the chord holds for that whole half;
+      // a change heard a beat late stays on the bar line.
+      const own = labels.slice(start + sp, start + end);
+      const state = own.every((l) => l === own[0]) ? own[0] : whole;
       let bass: number | undefined;
       const st = states[state];
       if (st) {
@@ -279,7 +277,8 @@ function grooveFor(
 ): DrumGroove {
   const steps = pulses * perPulse;
   const acc = { kick: new Float64Array(steps), snare: new Float64Array(steps), hat: new Float64Array(steps) };
-  for (const bar of bars) {
+  const regular = bars.filter((bar) => bar.beatFrames.length === pulses + 1);
+  for (const bar of regular) {
     for (let p = 0; p < pulses; p++) {
       const a = bar.beatFrames[p];
       const b = bar.beatFrames[p + 1] ?? a + (a - (bar.beatFrames[p - 1] ?? a - 40));
@@ -294,7 +293,7 @@ function grooveFor(
       }
     }
   }
-  const n = Math.max(1, bars.length);
+  const n = Math.max(1, regular.length);
   const avg = (x: Float64Array) => Array.from(x, (v) => round2(v / n));
   let groove: DrumGroove = { steps, kick: avg(acc.kick), snare: avg(acc.snare), hat: avg(acc.hat) };
 
@@ -455,6 +454,65 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
     const label = base === "Verse" && verseCount > 1 ? `Verse ${n}` : base;
     return { label, bars: r.bars };
   });
+}
+
+/**
+ * Beat indices that start a bar, plus the end. A Viterbi over position-in-bar: beat 1
+ * scores for a strong kick and a chord change, chord changes off beats 1 and 3 cost,
+ * and a bar may run one beat short or long (a beat the tracker dropped or added) at a price.
+ */
+function findDownbeats(labels: number[], kickAt: number[], pulses: number): number[] {
+  const n = labels.length;
+  if (!n) return [0];
+  const kickMean = mean(kickAt) || 1;
+  const SHIFT = 4;
+  // States 0..pulses-1 are positions in the bar; state `pulses` is an extra (fifth) beat.
+  const S = pulses + 1;
+  const emit = (i: number, pos: number) => {
+    const change = i > 0 && labels[i] !== labels[i - 1] ? 1 : 0;
+    if (pos === 0) return kickAt[i] / kickMean + 1.5 * change;
+    if (pulses === 4 && pos === 2) return 0.3 * change;
+    return -1.5 * change;
+  };
+  let score = Array.from({ length: S }, (_, pos) => (pos < pulses ? emit(0, pos) : -Infinity));
+  const back: number[][] = [];
+  for (let i = 1; i < n; i++) {
+    const next = new Array<number>(S).fill(-Infinity);
+    const from = new Array<number>(S).fill(0);
+    const offer = (to: number, prev: number, cost: number) => {
+      const v = score[prev] - cost;
+      if (v > next[to]) {
+        next[to] = v;
+        from[to] = prev;
+      }
+    };
+    for (let pos = 0; pos < pulses; pos++) {
+      if (pos + 1 < pulses) offer(pos + 1, pos, 0);
+      else offer(0, pos, 0);
+    }
+    if (pulses > 2) {
+      offer(0, pulses - 2, SHIFT); // short bar
+      offer(pulses, pulses - 1, SHIFT); // long bar
+    }
+    offer(0, pulses, 0);
+    for (let pos = 0; pos < S; pos++) next[pos] += emit(i, pos);
+    back.push(from);
+    score = next;
+  }
+  let pos = 0;
+  for (let k = 1; k < S; k++) if (score[k] > score[pos]) pos = k;
+  const path = new Array<number>(n);
+  path[n - 1] = pos;
+  for (let i = n - 1; i > 0; i--) {
+    pos = back[i - 1][pos];
+    path[i - 1] = pos;
+  }
+  const out: number[] = [];
+  path.forEach((p, i) => p === 0 && out.push(i));
+  // Close the last bar only if it is complete.
+  const last = out[out.length - 1];
+  if (last !== undefined && n - last >= pulses) out.push(last + pulses);
+  return out;
 }
 
 function similarity(a: string[], b: string[]): number {
