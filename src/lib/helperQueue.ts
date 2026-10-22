@@ -25,7 +25,8 @@ interface Pending extends HelperJob {
 
 const ONLINE_MS = 45_000;
 const POLL_MS = 25_000;
-const JOB_MS = 3 * 60_000;
+// Long enough for a 15-minute song to be separated on a processor.
+const JOB_MS = 6 * 60_000;
 
 const state = ((globalThis as unknown as { helperQueue?: State }).helperQueue ??= {
   lastSeen: 0,
