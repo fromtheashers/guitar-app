@@ -123,7 +123,6 @@
   padding: 20px;
   border-radius: var(--radius-l);
   background: var(--surface);
-  border: 1px solid var(--line);
 }
 
 .sync p {
@@ -189,7 +188,6 @@
   padding: 16px;
   border-radius: var(--radius-l);
   background: var(--surface);
-  border: 1px solid var(--line);
   min-width: 0;
 }
 
@@ -209,8 +207,7 @@
 }
 
 .danger {
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  padding-top: 24px;
 }
 
 @media (max-width: 900px) {

@@ -90,7 +90,7 @@
   padding: 16px;
   border-radius: var(--radius-l);
   background: var(--tint);
-  transition: background-color 400ms ease;
+  transition: background-color 240ms var(--ease-out);
   position: sticky;
   top: 72px;
 }
@@ -172,8 +172,9 @@
 }
 
 .unsynced {
+  margin: 0;
   color: var(--ink-2);
-  padding: 12px 0;
+  font-size: 14px;
 }
 
 .strum {

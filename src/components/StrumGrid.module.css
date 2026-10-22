@@ -1,5 +1,6 @@
 /* Leaded panes: the dark gaps between cells are the lead, the tint is the glass. */
 .grid {
+  font-variant-numeric: tabular-nums;
   display: grid;
   gap: 3px;
   padding: 3px;
@@ -45,7 +46,7 @@
   padding: 0;
   border-radius: 3px;
   background: color-mix(in srgb, var(--glass) var(--level), var(--surface-2));
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  transition: background-color 120ms ease;
 }
 
 .kick {
@@ -61,7 +62,7 @@
 }
 
 .pane[data-active] {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--amber) 70%, transparent);
   filter: brightness(1.35);
 }
 

@@ -10,7 +10,7 @@
   --line: #2c2c2e;
   --line-strong: #444447;
 
-  --ink: #f4f2ee;
+  --ink: #f2f2f0;
   --ink-2: #b6b3ad;
   --ink-3: #8f8c86;
 
@@ -56,6 +56,11 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures only where numbers line up or tick; Schibsted's tabular set
+   also widens full stops, which reads as a stray space in prose. */
+.tnum {
   font-variant-numeric: tabular-nums;
 }
 

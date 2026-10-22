@@ -114,8 +114,7 @@
 }
 
 .danger {
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  padding-top: 24px;
 }
 
 @media (max-width: 720px) {

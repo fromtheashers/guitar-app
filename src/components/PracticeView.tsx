@@ -81,7 +81,10 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
 
   const current = eventAt(view.events, time);
   const nowEvent = current >= 0 ? view.events[current] : null;
-  const nextEvent = view.events.slice(current + 1).find((e) => e.shape && e.shape !== nowEvent?.shape) ?? null;
+  // Before the first change (or with no timings) the song "starts on" its first chord.
+  const shownIndex = Math.max(0, current);
+  const shownShape = view.events[shownIndex]?.shape;
+  const nextEvent = view.events.slice(shownIndex + 1).find((e) => e.shape && e.shape !== shownShape) ?? null;
 
   // Where we are: section, bar and the strum step inside the bar.
   // Recomputed every frame while playing, so there's nothing to memoise.
@@ -240,7 +243,12 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
               </button>
             )}
           </div>
-          {synced ? (
+          {!synced && (
+            <p className={styles.unsynced}>
+              {videoId ? "Not synced to the video yet. Start on this chord and follow the chart below." : "Start on this chord and follow the chart below."}
+            </p>
+          )}
+          {view.events.length > 0 && (
             <div className={styles.chords} aria-live="off">
               <div className={styles.nowChord}>
                 <span className={styles.big}>{nowEvent?.label ?? view.events[0]?.label ?? "–"}</span>
@@ -254,10 +262,6 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
                 {nextEvent?.shape && <ChordDiagram chord={nextEvent.shape} easy={easy} size="s" />}
               </div>
             </div>
-          ) : (
-            <p className={styles.unsynced}>
-              {videoId ? "This song isn't synced to the video yet, so follow the chart below." : "Follow the chart below."}
-            </p>
           )}
           {section && (
             <div className={styles.strum}>

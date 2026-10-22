@@ -4,7 +4,6 @@
   padding: 20px;
   border-radius: var(--radius-l);
   background: var(--surface);
-  border: 1px solid var(--line);
 }
 
 .panel h3 {
@@ -45,6 +44,7 @@
 }
 
 .time {
+  font-variant-numeric: tabular-nums;
   font-size: 32px;
   font-weight: 640;
   line-height: 1;
@@ -104,6 +104,7 @@
 }
 
 .summary dd {
+  font-variant-numeric: tabular-nums;
   margin: 0;
   font-size: 18px;
   font-weight: 620;
