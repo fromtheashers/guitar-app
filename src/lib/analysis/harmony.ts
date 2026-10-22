@@ -146,12 +146,12 @@ export function labelBeats(beats: BeatHarmony[], key: Key, silence: number): num
 }
 
 /** Bass note under a chord when it is clearly a chord tone other than the root (G/B, C/E, D/F#). */
-export function slashBass(bass: Float64Array, state: ChordState): number | undefined {
+export function slashBass(bass: Float64Array, state: ChordState, ratio = 1.6): number | undefined {
   let arg = 0;
   for (let i = 1; i < 12; i++) if (bass[i] > bass[arg]) arg = i;
   if (arg === state.root) return undefined;
   const third = mod12(state.root + (state.minor ? 3 : 4));
   const fifth = mod12(state.root + 7);
   if (arg !== third && arg !== fifth) return undefined;
-  return bass[arg] > 1.6 * bass[state.root] ? arg : undefined;
+  return bass[arg] > ratio * bass[state.root] ? arg : undefined;
 }

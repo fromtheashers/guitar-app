@@ -15,9 +15,8 @@ import {
   onsetFrameTime,
 } from "./features";
 import type { ChordProbs } from "./chordModel";
-import { VOCAB } from "./chordModel";
 import { BeatHarmony, detectKey, labelBeats, slashBass, STATES } from "./harmony";
-import { beatProbabilities, labelBeatsWithModel } from "./modelHarmony";
+import { beatProbabilities, chordPrior, FAMILY_STATES, labelBeatsWithModel } from "./modelHarmony";
 
 export interface AnalysisOptions {
   /** Beats per bar as written in the chart: 4, 3 or 6 (6/8). */
@@ -94,24 +93,25 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
   const total = new Float64Array(12);
   beatHarmony.forEach((b) => b.chroma.forEach((v, i) => (total[i] += v * Math.min(1, b.energy / (silence * 5 || 1)))));
   let key = detectKey(total);
-  // Chord vocabulary: the trained model's 170 classes, or 24 triads from templates.
+  // Chord vocabulary: the trained model's classes folded into chart chords, or 24 triads from templates.
   let states: (ChordName | null)[];
   let labels: number[];
   let beatProbs: Float64Array[] | null = null;
   if (opts.chordProbs) {
-    states = VOCAB;
+    states = FAMILY_STATES;
     beatProbs = beatProbabilities(opts.chordProbs, beatSec, ibi);
-    labels = labelBeatsWithModel(beatProbs);
-    // The model's chords say more about the key than raw chroma does.
+    // First pass without a key, to find it from the chords; then again favouring chords in that key.
+    const firstPass = labelBeatsWithModel(beatProbs, chordPrior(null));
     const tones = new Float64Array(12);
-    labels.forEach((l) => {
-      const st = VOCAB[l];
+    firstPass.forEach((l) => {
+      const st = FAMILY_STATES[l];
       if (!st) return;
       tones[st.root] += 1;
       tones[mod12(st.root + (st.minor ? 3 : 4))] += 0.8;
       tones[mod12(st.root + 7)] += 0.8;
     });
     if (tones.some((v) => v > 0)) key = detectKey(tones);
+    labels = labelBeatsWithModel(beatProbs, chordPrior(key));
   } else {
     states = STATES.map((st) => st && { ...st, quality: st.minor ? "m" : "" });
     labels = labelBeats(beatHarmony, key, silence);
@@ -149,7 +149,8 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
       const st = states[state];
       if (st) {
         const h = averageHarmony(harm, beatSec[start + sp], beatSec[start + end] ?? beatSec[start + sp] + ibi * (end - sp));
-        bass = slashBass(h.bass, st);
+        // The model never hears inversions, so only a clearly dominant bass note makes a slash chord.
+        bass = slashBass(h.bass, st, beatProbs ? 3 : 1.6);
       }
       const prev = halves[halves.length - 1];
       if (!prev || prev.state !== state || prev.bass !== bass) halves.push({ state, bass, beat: sp });
@@ -321,20 +322,63 @@ interface FoundSection {
 function findSections(bars: Bar[], coarse: (state: number) => string): FoundSection[] {
   if (!bars.length) return [];
   const PHRASE = 4;
-  const phrases: { bars: Bar[]; sig: string[]; energy: number; group: number }[] = [];
-  for (let i = 0; i < bars.length; i += PHRASE) {
-    const pb = bars.slice(i, i + PHRASE);
-    const sig = pb.flatMap((b) => [coarse(b.halves[0].state), coarse(b.halves[b.halves.length - 1].state)]);
-    phrases.push({ bars: pb, sig, energy: mean(pb.map((b) => b.energy)), group: -1 });
+  type Phrase = { bars: Bar[]; sig: string[]; energy: number; group: number };
+  const phrasesFrom = (offset: number) => {
+    const out: Phrase[] = [];
+    const cuts = offset ? [0] : [];
+    for (let i = offset; i < bars.length; i += PHRASE) cuts.push(i);
+    cuts.forEach((from, k) => {
+      const pb = bars.slice(from, cuts[k + 1] ?? bars.length);
+      const sig = pb.flatMap((b) => [coarse(b.halves[0].state), coarse(b.halves[b.halves.length - 1].state)]);
+      out.push({ bars: pb, sig, energy: mean(pb.map((b) => b.energy)), group: -1 });
+    });
+    return out;
+  };
+  // Same chords at a similar loudness: a quiet verse and a loud chorus often share a progression.
+  const alike = (a: Phrase, b: Phrase, threshold: number) =>
+    similarity(a.sig, b.sig) >= threshold && Math.max(a.energy, b.energy) <= 1.6 * Math.min(a.energy, b.energy);
+
+  // Intros and pickups shift the phrases: start them where the most phrases repeat.
+  let phrases = phrasesFrom(0);
+  let bestRepeats = -1;
+  for (let offset = 0; offset < PHRASE && offset < bars.length; offset++) {
+    const ps = phrasesFrom(offset);
+    const repeats = ps.filter((p, i) => ps.some((q, j) => j !== i && alike(p, q, 0.75))).length;
+    if (repeats > bestRepeats) {
+      bestRepeats = repeats;
+      phrases = ps;
+    }
   }
-  const reps: string[][] = [];
+
+  // Each phrase joins the group it matches best, so one misheard bar doesn't start a new section.
+  const reps: Phrase[] = [];
   for (const p of phrases) {
-    let g = reps.findIndex((r) => similarity(r, p.sig) >= 0.75);
+    let g = -1;
+    let best = 0.75;
+    reps.forEach((r, i) => {
+      const sim = similarity(r.sig, p.sig);
+      if (sim >= best && alike(r, p, best)) {
+        best = sim;
+        g = i;
+      }
+    });
     if (g < 0) {
       g = reps.length;
-      reps.push(p.sig);
+      reps.push(p);
     }
     p.group = g;
+  }
+  // A phrase heard only once that is close to a repeated group belongs to it.
+  const sizes = new Map<number, number>();
+  phrases.forEach((p) => sizes.set(p.group, (sizes.get(p.group) ?? 0) + 1));
+  for (const p of phrases) {
+    if (sizes.get(p.group) !== 1) continue;
+    const g = reps.findIndex((r, i) => (sizes.get(i) ?? 0) >= 2 && alike(r, p, 0.5));
+    if (g >= 0) {
+      sizes.set(p.group, 0);
+      p.group = g;
+      sizes.set(g, (sizes.get(g) ?? 0) + 1);
+    }
   }
 
   // Runs of the same group form one section.
