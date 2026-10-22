@@ -1,0 +1,132 @@
+.chart {
+  display: grid;
+  gap: 28px;
+}
+
+.section {
+  --hue: var(--ink-2);
+  --tint: var(--surface);
+}
+
+.section[data-hue="cobalt"] {
+  --hue: var(--cobalt);
+  --tint: var(--cobalt-tint);
+}
+
+.section[data-hue="ruby"] {
+  --hue: var(--ruby);
+  --tint: var(--ruby-tint);
+}
+
+.section[data-hue="green"] {
+  --hue: var(--green);
+  --tint: var(--green-tint);
+}
+
+.section[data-hue="amber"] {
+  --hue: var(--amber);
+  --tint: var(--amber-tint);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.label {
+  font-size: 15px;
+  color: var(--hue);
+}
+
+.section[data-hue="plain"] .label {
+  color: var(--ink-2);
+}
+
+.loop[aria-pressed="true"] {
+  color: var(--amber);
+}
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  background: var(--lead);
+  border-radius: var(--radius-l);
+}
+
+.bar {
+  min-width: 0;
+}
+
+.barButton {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--tint);
+  text-align: left;
+  color: var(--ink);
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 140ms var(--ease-out);
+}
+
+button.barButton {
+  cursor: pointer;
+}
+
+button.barButton:hover {
+  background: color-mix(in srgb, var(--tint), var(--hue) 14%);
+}
+
+button.barButton:active {
+  transform: scale(0.98);
+}
+
+.bar[data-active] .barButton {
+  background: color-mix(in srgb, var(--tint), var(--hue) 30%);
+  box-shadow: inset 0 0 0 2px var(--amber);
+}
+
+.cue {
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chords {
+  display: grid;
+  grid-template-columns: repeat(var(--beats), minmax(0, 1fr));
+  align-items: baseline;
+}
+
+.chord {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.chord[data-now] {
+  color: var(--amber);
+}
+
+@media (max-width: 720px) {
+  .bars {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chord {
+    font-size: 18px;
+  }
+}

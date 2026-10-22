@@ -1,0 +1,100 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  transition: background-color 140ms ease, transform 140ms var(--ease-out);
+}
+
+.row:hover {
+  background: var(--surface-2);
+}
+
+.row:active {
+  transform: scale(0.99);
+}
+
+.name {
+  font-weight: 620;
+  font-size: 16px;
+}
+
+.empty {
+  display: grid;
+  gap: 4px;
+  padding: 32px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.desc {
+  color: var(--ink-2);
+  max-width: 68ch;
+  white-space: pre-wrap;
+}
+
+.order {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.song {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.songTitle {
+  display: grid;
+}
+
+.songTitle span:last-child {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-s);
+  background: var(--amber-tint);
+  color: var(--amber);
+  font-weight: 650;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.head > div {
+  display: grid;
+  gap: 6px;
+}

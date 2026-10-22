@@ -1,0 +1,12 @@
+.box {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+  padding: 24px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.box p {
+  color: var(--ink-2);
+}

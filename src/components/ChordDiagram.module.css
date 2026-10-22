@@ -1,0 +1,69 @@
+.wrap {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.name {
+  font-weight: 650;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.nut {
+  fill: var(--ink-2);
+}
+
+.fret {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.string {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+}
+
+.dot {
+  fill: var(--ink);
+}
+
+.wrap[data-active] .dot {
+  fill: var(--amber);
+}
+
+.open {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.4;
+}
+
+.mark {
+  fill: var(--ink-3);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.fretNo {
+  fill: var(--ink-2);
+  font-size: 10px;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.none {
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 16px 0;
+}

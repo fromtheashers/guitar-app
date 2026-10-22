@@ -1,0 +1,132 @@
+/* Leaded panes: the dark gaps between cells are the lead, the tint is the glass. */
+.grid {
+  display: grid;
+  gap: 3px;
+  padding: 3px;
+  background: var(--lead);
+  border-radius: var(--radius);
+  width: 100%;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 52px repeat(var(--steps), minmax(0, 1fr));
+  gap: 3px;
+  align-items: stretch;
+}
+
+.lane {
+  font-size: 12px;
+  color: var(--ink-3);
+  align-self: center;
+  padding-left: 4px;
+}
+
+.count {
+  font-size: 12px;
+  text-align: center;
+  color: var(--ink-3);
+  line-height: 20px;
+}
+
+.count[data-beat] {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.count[data-active] {
+  color: var(--amber);
+}
+
+.pane {
+  display: block;
+  height: 14px;
+  border: 0;
+  padding: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--glass) var(--level), var(--surface-2));
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.kick {
+  --glass: var(--ruby);
+}
+
+.snare {
+  --glass: var(--cobalt);
+}
+
+.hat {
+  --glass: var(--amber);
+}
+
+.pane[data-active] {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent);
+  filter: brightness(1.35);
+}
+
+.strokes .stroke {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  border: 0;
+  padding: 0;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  transition: background-color 90ms ease, color 90ms ease, transform 90ms var(--ease-out);
+}
+
+.stroke svg {
+  width: 16px;
+  height: 20px;
+}
+
+.stroke[data-stroke="-"] {
+  color: var(--ink-3);
+  background: var(--surface);
+}
+
+.stroke[data-accent] {
+  color: var(--ink);
+}
+
+/* The step playing now: sun through glass. */
+.stroke[data-active] {
+  background: var(--amber);
+  color: #1a1306;
+}
+
+.stroke[data-active][data-stroke="-"] {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+
+.grid[data-editable] button {
+  cursor: pointer;
+}
+
+.grid[data-editable] .pane:hover,
+.grid[data-editable] .stroke:hover {
+  filter: brightness(1.25);
+}
+
+.grid[data-editable] button:active {
+  transform: scale(0.94);
+}
+
+@media (max-width: 520px) {
+  .row {
+    grid-template-columns: 40px repeat(var(--steps), minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .lane {
+    font-size: 11px;
+    padding-left: 0;
+  }
+
+  .strokes .stroke {
+    height: 34px;
+  }
+}

@@ -1,0 +1,13 @@
+.form {
+  display: grid;
+  gap: 16px;
+  max-width: 420px;
+  margin: 8vh auto 0;
+  padding: 28px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.form button {
+  justify-self: start;
+}

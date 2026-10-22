@@ -1,0 +1,16 @@
+.page {
+  display: grid;
+  gap: 16px;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.artist {
+  color: var(--ink-2);
+  margin-top: 2px;
+}

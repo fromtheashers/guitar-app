@@ -1,0 +1,61 @@
+.page {
+  display: grid;
+  gap: 32px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.block {
+  display: grid;
+  gap: 12px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  transition: background-color 140ms ease;
+}
+
+.row:hover {
+  background: var(--surface-2);
+}
+
+.name {
+  font-weight: 620;
+}
+
+.notice {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+  padding: 24px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}

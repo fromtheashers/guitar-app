@@ -1,0 +1,117 @@
+.panel {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.panel h3 {
+  margin: 0;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.panel > button {
+  justify-self: start;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+  color: var(--ink-2);
+}
+
+.fine {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.live {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.time {
+  font-size: 32px;
+  font-weight: 640;
+  line-height: 1;
+  min-width: 4ch;
+}
+
+.meter,
+.progress {
+  position: relative;
+  flex: 1;
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress {
+  margin-top: 8px;
+}
+
+.meter > span,
+.progress > span {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  background: var(--amber);
+}
+
+.meter > span {
+  transition: transform 180ms var(--ease-out);
+}
+
+.progress > span {
+  transition: transform 240ms var(--ease-out);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--line-strong);
+  border: 1px solid var(--line-strong);
+}
+
+.summary > div {
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
+.summary dt {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.summary dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 620;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter > span,
+  .progress > span {
+    transition: none;
+  }
+}

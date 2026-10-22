@@ -1,0 +1,258 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.videoCol {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-l);
+  overflow: hidden;
+  background: #000;
+}
+
+.frame,
+.frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.noVideo {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-2);
+}
+
+.videoError {
+  position: absolute;
+  inset: auto 12px 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.inline :global(.select) {
+  width: auto;
+  min-height: 38px;
+  color: var(--ink);
+}
+
+.capoLine {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.capoLine strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Now playing: a pane tinted by the section's glass. */
+.now {
+  --hue: var(--ink-2);
+  --tint: var(--surface);
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: var(--radius-l);
+  background: var(--tint);
+  transition: background-color 400ms ease;
+  position: sticky;
+  top: 72px;
+}
+
+.now[data-hue="cobalt"] {
+  --hue: var(--cobalt);
+  --tint: var(--cobalt-tint);
+}
+
+.now[data-hue="ruby"] {
+  --hue: var(--ruby);
+  --tint: var(--ruby-tint);
+}
+
+.now[data-hue="green"] {
+  --hue: var(--green);
+  --tint: var(--green-tint);
+}
+
+.now[data-hue="amber"] {
+  --hue: var(--amber);
+  --tint: var(--amber-tint);
+}
+
+.nowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.sectionName {
+  font-weight: 650;
+  color: var(--hue);
+}
+
+.now[data-hue="plain"] .sectionName {
+  color: var(--ink-2);
+}
+
+.chords {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.nowChord {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.big {
+  font-size: clamp(56px, 6vw, 80px);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  min-width: 2ch;
+}
+
+.nextChord {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding-left: 16px;
+  color: var(--ink-2);
+}
+
+.nextLabel {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mid {
+  font-size: 24px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.unsynced {
+  color: var(--ink-2);
+  padding: 12px 0;
+}
+
+.strum {
+  display: grid;
+  gap: 8px;
+}
+
+.strumHead {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chartHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.follow input {
+  accent-color: var(--amber);
+  width: 16px;
+  height: 16px;
+}
+
+.shapes,
+.notes {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.shapeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 28px;
+  padding: 16px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.notes p {
+  max-width: 68ch;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .top {
+    grid-template-columns: 1fr;
+  }
+
+  .now {
+    position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .big {
+    font-size: 56px;
+  }
+
+  .controls {
+    gap: 8px;
+  }
+
+  .shapeRow {
+    gap: 16px;
+    justify-content: space-between;
+  }
+}
