@@ -98,8 +98,40 @@ export async function startTabCapture(videoTime: () => { time: number; playing: 
     stream.getTracks().forEach((t) => t.stop());
     throw new CaptureError("No audio came through. In the share window, pick this tab and switch on \"Also share tab audio\".", "no-audio");
   }
+  return captureFrom(stream, audioTracks, videoTime, onEnded);
+}
 
+export function micCaptureSupported(): boolean {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof AudioWorkletNode !== "undefined";
+}
+
+/**
+ * Listen through the device's microphone while the video plays out loud. Works on
+ * phones and in any browser; less exact than a clean feed, but fine for chords and beat.
+ */
+export async function startMicCapture(videoTime: () => { time: number; playing: boolean }): Promise<CaptureHandle> {
+  if (!micCaptureSupported()) throw new CaptureError("This browser can't use the microphone.", "unsupported");
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      // Voice processing would treat the music as noise to cancel, so switch it all off.
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch {
+    throw new CaptureError("The app wasn't allowed to use the microphone. Allow it in the browser's site settings and try again.", "denied");
+  }
+  return captureFrom(stream, stream.getAudioTracks(), videoTime);
+}
+
+async function captureFrom(
+  stream: MediaStream,
+  audioTracks: MediaStreamTrack[],
+  videoTime: () => { time: number; playing: boolean },
+  onEnded?: () => void,
+): Promise<CaptureHandle> {
   const ctx = new AudioContext();
+  // Safari starts contexts suspended outside the click that created them.
+  if (ctx.state === "suspended") await ctx.resume().catch(() => {});
   const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
   await ctx.audioWorklet.addModule(url);
   URL.revokeObjectURL(url);

@@ -39,3 +39,14 @@ The tables are created automatically the first time the app talks to the databas
 ## Deploying on Render
 
 `render.yaml` describes the service. Set `DATABASE_URL` (from Neon) and `EDITOR_PASSCODE` in Render's Environment settings.
+
+### Letting the server past YouTube's bot check
+
+YouTube blocks most cloud servers unless they're signed in. To sign the server in, use a spare Google account (not your main one):
+
+1. In a desktop browser, sign in to YouTube with the spare account.
+2. Export its youtube.com cookies in Netscape `cookies.txt` format (for example with the "Get cookies.txt LOCALLY" extension).
+3. In Render, open the service, go to **Environment**, and under **Secret Files** add a file named `youtube-cookies.txt` with the exported text.
+4. Save. Render redeploys, and the server reads `/etc/secrets/youtube-cookies.txt`.
+
+Cookies last weeks to months; when YouTube blocks the server again, export them again. Without cookies, the microphone option still works on any device.

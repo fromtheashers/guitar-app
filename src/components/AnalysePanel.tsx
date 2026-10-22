@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { analyzeAudio, type AnalysisResult } from "@/lib/analysis/analyze";
 import { FetchAudioError, fetchYouTubeAudio } from "@/lib/analysis/fetchAudio";
-import { CaptureError, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
+import { CaptureError, micCaptureSupported, startMicCapture, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
 import styles from "./AnalysePanel.module.css";
 
@@ -21,7 +21,7 @@ interface Props {
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "asking" }
+  | { kind: "asking"; source: "tab" | "mic" }
   | { kind: "downloading"; bytes: number }
   | { kind: "listening" }
   | { kind: "working"; fraction: number; stage: string }
@@ -34,6 +34,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
 export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, player, onResult, onUndo, hasChart }: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const supported = useSyncExternalStore(noop, tabCaptureSupported, () => true);
+  const micSupported = useSyncExternalStore(noop, micCaptureSupported, () => true);
   const [elapsed, setElapsed] = useState(0);
   const [level, setLevel] = useState(0);
   const handle = useRef<CaptureHandle | null>(null);
@@ -115,17 +116,19 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.kind]);
 
-  const start = async () => {
-    setPhase({ kind: "asking" });
+  const videoTime = () => {
+    const p = player.current;
+    return { time: p?.getCurrentTime() ?? 0, playing: p?.getPlayerState() === PLAYING };
+  };
+
+  const start = async (source: "tab" | "mic") => {
+    setPhase({ kind: "asking", source });
     try {
-      handle.current = await startTabCapture(
-        () => {
-          const p = player.current;
-          return { time: p?.getCurrentTime() ?? 0, playing: p?.getPlayerState() === PLAYING };
-        },
-        // The person pressed "Stop sharing" in the browser bar.
-        () => void finish(),
-      );
+      handle.current =
+        source === "mic"
+          ? await startMicCapture(videoTime)
+          : // The second argument fires when the person presses "Stop sharing" in the browser bar.
+            await startTabCapture(videoTime, () => void finish());
     } catch (e) {
       setPhase({ kind: "error", message: e instanceof CaptureError ? e.message : "Couldn't start listening. Try again." });
       return;
@@ -158,9 +161,22 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
             Draft from YouTube
           </button>
           <p className={styles.fine}>Takes about a minute. The audio is analysed on this device and never saved.</p>
+          {micSupported && (
+            <details className={styles.backup}>
+              <summary>Backup: listen through the microphone</summary>
+              <ol className={styles.steps}>
+                <li>Turn the volume up and keep the room quiet.</li>
+                <li>Press the button below and allow the microphone.</li>
+                <li>The video plays from the start. Stop early for a quick draft, or let it finish for the whole song.</li>
+              </ol>
+              <button type="button" className="btn" onClick={() => start("mic")} disabled={disabled || !playerReady}>
+                Listen through the microphone
+              </button>
+            </details>
+          )}
           {supported && (
             <details className={styles.backup}>
-              <summary>Backup: listen to this tab instead</summary>
+              <summary>Backup: listen to this tab (Chrome or Edge on a computer)</summary>
               <ol className={styles.steps}>
                 <li>Press the button below.</li>
                 <li>
@@ -168,7 +184,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
                 </li>
                 <li>Let the song play. Stop early for a quick draft, or let it finish for the whole song.</li>
               </ol>
-              <button type="button" className="btn" onClick={start} disabled={disabled || !playerReady}>
+              <button type="button" className="btn" onClick={() => start("tab")} disabled={disabled || !playerReady}>
                 Listen to this tab
               </button>
             </details>
@@ -176,7 +192,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
         </>
       ) : phase.kind === "asking" ? (
         <p className="muted" role="status">
-          Waiting for you to share this tab…
+          {phase.source === "mic" ? "Waiting for you to allow the microphone…" : "Waiting for you to share this tab…"}
         </p>
       ) : phase.kind === "downloading" ? (
         <>
