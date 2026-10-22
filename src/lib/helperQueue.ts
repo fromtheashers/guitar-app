@@ -14,7 +14,7 @@ export interface HelperJob {
 
 export interface HelperAudio {
   audio: Uint8Array;
-  /** A WAV with instruments on the left and drums on the right (the helper separated it). */
+  /** A WAV of instruments, drums and vocals (the helper separated it). */
   stems: boolean;
 }
 

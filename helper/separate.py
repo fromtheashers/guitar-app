@@ -1,9 +1,9 @@
-# Splits a song into an instruments track (bass + everything but vocals and drums)
-# and a drums track with Demucs, for Chord Window's helper.
+# Splits a song into instruments (bass + everything but vocals and drums), drums and
+# vocals with Demucs, for Chord Window's helper.
 #
-# Reads raw 32-bit float stereo at 44100 Hz on stdin; writes a 16-bit stereo WAV at
-# 22050 Hz on stdout with instruments on the left and drums on the right. Nothing is
-# written to disk. Uses the graphics card when PyTorch can see one.
+# Reads raw 32-bit float stereo at 44100 Hz on stdin; writes a 16-bit three-channel
+# WAV at 22050 Hz on stdout: instruments, drums, vocals. Nothing is written to disk.
+# Uses the graphics card when PyTorch can see one.
 
 import io
 import os
@@ -43,13 +43,14 @@ def main() -> None:
 
     instruments = (by_name["bass"] + by_name["other"]).mean(0)
     drums = by_name["drums"].mean(0)
-    out = AF.resample(torch.stack([instruments, drums]), IN_SR, OUT_SR)
+    vocals = by_name["vocals"].mean(0)
+    out = AF.resample(torch.stack([instruments, drums, vocals]), IN_SR, OUT_SR)
     peak = float(out.abs().max()) or 1.0
     pcm = (out.T.numpy() / max(1.0, peak) * 32767).astype("<i2")
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
-        w.setnchannels(2)
+        w.setnchannels(3)
         w.setsampwidth(2)
         w.setframerate(OUT_SR)
         w.writeframes(pcm.tobytes())

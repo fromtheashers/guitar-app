@@ -6,7 +6,7 @@ import { SR } from "./features";
 export class FetchAudioError extends Error {}
 
 export interface FetchedAudio {
-  /** The song, mono. Without vocals when it came separated. */
+  /** The whole song, mono. */
   samples: Float32Array;
   /** When the home helper separated the song: the instruments and drums on their own. */
   stems?: { instruments: Float32Array; drums: Float32Array };
@@ -50,12 +50,15 @@ export async function fetchYouTubeAudio(url: string, onBytes?: (bytes: number) =
   } catch {
     throw new FetchAudioError("This browser couldn't read the audio YouTube sent. Try Chrome, or the backup option.");
   }
-  if (res.headers.get("x-stems") === "1" && decoded.numberOfChannels === 2) {
-    // Instruments on the left, drums on the right; together they're the song minus vocals.
+  if (res.headers.get("x-stems") === "1" && decoded.numberOfChannels >= 2) {
+    // Instruments, drums and (third) vocals; all together they're the whole song.
     const instruments = decoded.getChannelData(0);
     const drums = decoded.getChannelData(1);
     const samples = new Float32Array(decoded.length);
-    for (let i = 0; i < samples.length; i++) samples[i] = instruments[i] + drums[i];
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      const ch = decoded.getChannelData(c);
+      for (let i = 0; i < samples.length; i++) samples[i] += ch[i];
+    }
     return { samples, stems: { instruments, drums } };
   }
   const out = new Float32Array(decoded.length);

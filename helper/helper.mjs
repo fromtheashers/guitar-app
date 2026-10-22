@@ -5,7 +5,8 @@
 // Needs Node 20+ and yt-dlp (yt-dlp.exe next to this file on Windows, or on PATH).
 // Settings come from config.json next to this file: { "site": "https://…", "token": "…" }
 //
-// Optional: with "separator" set to a Python that has Demucs (see separate.py), the
+// Optional: with "separator" set to a Python that has Demucs (see separate.py), in
+// config.json or in separator.json next to this file (which holds no password), the
 // helper splits each song into instruments and drums before sending it, so the site
 // can read chords without vocals and strum patterns from the drums alone. Needs
 // ffmpeg (ffmpeg.exe next to this file, "ffmpeg" in config.json, or on PATH). If
@@ -24,11 +25,13 @@ const auth = { authorization: `Bearer ${config.token}` };
 const MAX_BYTES = 60 * 1024 * 1024;
 
 const exe = ["yt-dlp.exe", "yt-dlp"].map((f) => path.join(here, f)).find(existsSync) ?? "yt-dlp";
-const ffmpeg = config.ffmpeg ?? ["ffmpeg.exe", "ffmpeg"].map((f) => path.join(here, f)).find(existsSync) ?? "ffmpeg";
-const separator = config.separator;
-const separatorScript = config.separatorScript ?? path.join(here, "separate.py");
+const sepFile = path.join(here, "separator.json");
+const sep = { ...(existsSync(sepFile) ? JSON.parse(readFileSync(sepFile, "utf8").replace(/^\uFEFF/, "")) : {}), ...config };
+const ffmpeg = sep.ffmpeg ?? ["ffmpeg.exe", "ffmpeg"].map((f) => path.join(here, f)).find(existsSync) ?? "ffmpeg";
+const separator = sep.separator;
+const separatorScript = sep.separatorScript ?? path.join(here, "separate.py");
 // Demucs weights live beside the Python environment unless config says otherwise.
-const torchHome = config.torchHome ?? (separator ? path.resolve(path.dirname(separator), "..", "..", "models") : undefined);
+const models = sep.models ?? (separator ? path.resolve(path.dirname(separator), "..", "..", "models") : undefined);
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -72,7 +75,7 @@ function run(cmd, args, input, env) {
   });
 }
 
-/** Instruments (left) and drums (right) as a WAV, or null to send the plain audio. */
+/** Instruments, drums and vocals as a three-channel WAV, or null to send the plain audio. */
 async function separate(audio) {
   if (!separator) return null;
   const started = Date.now();
@@ -81,7 +84,7 @@ async function separate(audio) {
     log("Couldn't decode the audio for separation:", decoded.stderr.trim().split("\n").pop());
     return null;
   }
-  const split = await run(separator, [separatorScript], decoded.out, torchHome ? { TORCH_HOME: torchHome } : {});
+  const split = await run(separator, [separatorScript], decoded.out, models ? { TORCH_HOME: models, HF_HOME: path.join(models, "hf") } : {});
   if (split.code !== 0 || split.out.length < 44) {
     log("Separation failed, sending the plain audio:", split.stderr.trim().split("\n").pop());
     return null;
