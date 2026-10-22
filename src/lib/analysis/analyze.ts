@@ -380,7 +380,7 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
   phrases.forEach((p) => sizes.set(p.group, (sizes.get(p.group) ?? 0) + 1));
   for (const p of phrases) {
     if (sizes.get(p.group) !== 1) continue;
-    const g = reps.findIndex((r, i) => (sizes.get(i) ?? 0) >= 2 && alike(r, p, 0.5));
+    const g = reps.findIndex((r, i) => (sizes.get(i) ?? 0) >= 2 && alike(r, p, 0.7));
     if (g >= 0) {
       sizes.set(p.group, 0);
       p.group = g;
@@ -398,17 +398,18 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
     } else runs.push({ group: p.group, bars: [...p.bars], energy: p.energy });
   }
 
-  // Two single-phrase groups that always appear back to back are one section
-  // (a chorus whose second half differs from its first).
+  // Two single-phrase groups that appear back to back are one section (a verse or
+  // chorus whose second half differs from its first). One copy may stand alone, say
+  // a last half-verse before the chorus.
   for (let i = 0; i + 1 < runs.length; i++) {
     const a = runs[i].group;
     const b = runs[i + 1].group;
     if (a === b) continue;
-    const pairs = runs.every((r, k) =>
-      r.group === a ? runs[k + 1]?.group === b && r.bars.length <= PHRASE && runs[k + 1].bars.length <= PHRASE
-      : r.group === b ? runs[k - 1]?.group === a : true,
-    );
-    if (!pairs) continue;
+    const short = runs.every((r) => (r.group !== a && r.group !== b) || r.bars.length <= PHRASE);
+    const aRuns = runs.filter((r) => r.group === a).length;
+    const followed = runs.filter((r, k) => r.group === a && runs[k + 1]?.group === b).length;
+    const bLed = runs.every((r, k) => r.group !== b || runs[k - 1]?.group === a);
+    if (!short || !bLed || followed < Math.max(1, aRuns - 1) || (aRuns > 1 && followed < 2)) continue;
     for (let k = 0; k + 1 < runs.length; k++) {
       if (runs[k].group === a && runs[k + 1].group === b) {
         runs[k].bars.push(...runs[k + 1].bars);
@@ -416,6 +417,12 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
         runs.splice(k + 1, 1);
       }
     }
+  }
+
+  // A pickup shorter than a phrase belongs to what follows it.
+  if (runs.length > 1 && runs[0].bars.length < PHRASE) {
+    runs[1].bars.unshift(...runs[0].bars);
+    runs.shift();
   }
 
   const groupCount = new Map<number, number>();
@@ -439,6 +446,10 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
   }
   const last = runs[runs.length - 1];
   if (runs.length > 3 && once(last.group) && !names.has(last.group)) names.set(last.group, "Outro");
+  // Songs often end the way they began: the same group first and last, and nowhere else.
+  const bookends =
+    runs.length > 3 && runs[0].group === last.group && groupCount.get(last.group) === 2 && last.group !== chorus;
+  if (bookends) names.set(last.group, "Intro");
 
   const unnamedBefore = runs.slice(0, Math.max(0, firstChorusRun)).map((r) => r.group).filter((g) => !names.has(g));
   if (unnamedBefore.length) {
@@ -446,7 +457,14 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
     const pre = unnamedBefore.find((g) => g !== unnamedBefore[0]);
     if (pre !== undefined) names.set(pre, "Pre-Chorus");
   }
-  const extra = ["Bridge", "Interlude", "Tag"];
+  // After the first chorus, the longest new material is most likely the bridge.
+  const barsOf = (g: number) => runs.filter((r) => r.group === g).reduce((n, r) => n + r.bars.length, 0);
+  const after = runs.slice(firstChorusRun + 1).map((r) => r.group).filter((g) => !names.has(g));
+  if (after.length) {
+    const bridge = after.reduce((x, y) => (barsOf(y) > barsOf(x) ? y : x));
+    if (barsOf(bridge) >= 2 * PHRASE) names.set(bridge, "Bridge");
+  }
+  const extra = ["Bridge", "Interlude", "Tag"].filter((n) => ![...names.values()].includes(n));
   for (const r of runs) {
     if (names.has(r.group)) continue;
     if (![...names.values()].includes("Verse") && (groupCount.get(r.group) ?? 0) >= 2) names.set(r.group, "Verse");
@@ -455,8 +473,8 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
 
   const seen = new Map<string, number>();
   const verseCount = runs.filter((r) => names.get(r.group) === "Verse").length;
-  return runs.map((r) => {
-    const base = names.get(r.group)!;
+  return runs.map((r, i) => {
+    const base = bookends && i === runs.length - 1 ? "Outro" : names.get(r.group)!;
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const label = base === "Verse" && verseCount > 1 ? `Verse ${n}` : base;
