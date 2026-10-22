@@ -53,8 +53,11 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor("tab-tap", Tap);
 `;
 
+/** Only desktop Chrome and Edge share a tab's audio; Safari, Firefox and phones don't. */
 export function tabCaptureSupported(): boolean {
-  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia && typeof AudioWorkletNode !== "undefined";
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia || typeof AudioWorkletNode === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /Chrome\/|Chromium\/|Edg\//.test(ua) && !/Mobile|Android|CriOS|EdgiOS/.test(ua);
 }
 
 export interface CaptureHandle {

@@ -315,7 +315,9 @@ export function SongEditor({ song }: { song?: Song }) {
           </div>
           <div className={styles.side}>
             <AnalysePanel
-              disabled={!videoId || !ytReady || tapIndex !== null}
+              disabled={!videoId || tapIndex !== null}
+              playerReady={ytReady}
+              videoUrl={draft.youtubeUrl}
               beatsPerBar={draft.beatsPerBar}
               player={player}
               onResult={(r) => {

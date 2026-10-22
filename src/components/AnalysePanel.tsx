@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { analyzeAudio, type AnalysisResult } from "@/lib/analysis/analyze";
+import { FetchAudioError, fetchYouTubeAudio } from "@/lib/analysis/fetchAudio";
 import { CaptureError, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
 import styles from "./AnalysePanel.module.css";
 
 interface Props {
   disabled: boolean;
+  /** Tab listening drives the embedded player, so it waits for it. */
+  playerReady: boolean;
+  videoUrl: string;
   beatsPerBar: number;
   player: React.RefObject<YTPlayer | null>;
   onResult: (r: AnalysisResult) => void;
@@ -18,6 +22,7 @@ interface Props {
 type Phase =
   | { kind: "idle" }
   | { kind: "asking" }
+  | { kind: "downloading"; bytes: number }
   | { kind: "listening" }
   | { kind: "working"; fraction: number; stage: string }
   | { kind: "done"; result: AnalysisResult }
@@ -26,16 +31,55 @@ type Phase =
 const noop = () => () => {};
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-export function AnalysePanel({ disabled, beatsPerBar, player, onResult, onUndo, hasChart }: Props) {
+export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, player, onResult, onUndo, hasChart }: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const supported = useSyncExternalStore(noop, tabCaptureSupported, () => true);
   const [elapsed, setElapsed] = useState(0);
   const [level, setLevel] = useState(0);
   const handle = useRef<CaptureHandle | null>(null);
+  const download = useRef<AbortController | null>(null);
   const finishing = useRef(false);
 
   // Throw the audio away if the editor closes mid-capture.
-  useEffect(() => () => handle.current?.cancel(), []);
+  useEffect(
+    () => () => {
+      handle.current?.cancel();
+      download.current?.abort();
+    },
+    [],
+  );
+
+  const analyse = async (samples: Float32Array, toVideoTime?: (t: number) => number | null) => {
+    const result = await analyzeAudio(samples, {
+      beatsPerBar,
+      toVideoTime,
+      onProgress: (fraction, stage) => setPhase({ kind: "working", fraction, stage }),
+    });
+    onResult(result);
+    setPhase({ kind: "done", result });
+  };
+
+  // Main path: the server fetches the audio from YouTube and streams it here.
+  const fromYouTube = async () => {
+    const ctrl = new AbortController();
+    download.current = ctrl;
+    setPhase({ kind: "downloading", bytes: 0 });
+    try {
+      const samples = await fetchYouTubeAudio(videoUrl, (bytes) => setPhase({ kind: "downloading", bytes }), ctrl.signal);
+      download.current = null;
+      setPhase({ kind: "working", fraction: 0, stage: "Preparing the audio" });
+      // The file starts where the video starts, so audio time is video time.
+      await analyse(samples);
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      setPhase({
+        kind: "error",
+        message: e instanceof FetchAudioError ? e.message : "Something went wrong while analysing. Try again, or chart this one by hand.",
+      });
+    } finally {
+      download.current = null;
+    }
+  };
 
   const finish = async () => {
     const h = handle.current;
@@ -46,13 +90,7 @@ export function AnalysePanel({ disabled, beatsPerBar, player, onResult, onUndo, 
     setPhase({ kind: "working", fraction: 0, stage: "Preparing the audio" });
     try {
       const capture = await h.finish();
-      const result = await analyzeAudio(capture.samples, {
-        beatsPerBar,
-        toVideoTime: capture.toVideoTime,
-        onProgress: (fraction, stage) => setPhase({ kind: "working", fraction, stage }),
-      });
-      onResult(result);
-      setPhase({ kind: "done", result });
+      await analyse(capture.samples, capture.toVideoTime);
     } catch (e) {
       setPhase({
         kind: "error",
@@ -110,25 +148,53 @@ export function AnalysePanel({ disabled, beatsPerBar, player, onResult, onUndo, 
     <div className={styles.panel}>
       <h3>Draft a chart from the video</h3>
 
-      {!supported ? (
-        <p className="muted">
-          This needs Chrome or Edge on a laptop or desktop. Phones can&apos;t share tab audio, but students can still practise here.
-        </p>
-      ) : phase.kind === "idle" || phase.kind === "asking" ? (
+      {phase.kind === "idle" ? (
         <>
           <p className="muted">
-            The app listens while the video plays from the start, then writes the chords, sections, timings and strum patterns.
+            The app fetches the song&apos;s audio from YouTube and writes the chords, sections, timings and strum patterns.
             {hasChart && " It replaces the chart below, and you can undo."}
           </p>
-          <ol className={styles.steps}>
-            <li>Press the button below.</li>
-            <li>In the window that opens, choose <strong>This tab</strong> and switch on <strong>Also share tab audio</strong>.</li>
-            <li>Let the song play. Stop early for a quick draft, or let it finish for the whole song.</li>
-          </ol>
-          <button type="button" className="btn btn-primary" onClick={start} disabled={disabled || phase.kind === "asking"}>
-            {phase.kind === "asking" ? "Waiting for you to share…" : "Listen and draft"}
+          <button type="button" className="btn btn-primary" onClick={fromYouTube} disabled={disabled}>
+            Draft from YouTube
           </button>
-          <p className={styles.fine}>Audio is analysed on this device and never saved or uploaded.</p>
+          <p className={styles.fine}>Takes about a minute. The audio is analysed on this device and never saved.</p>
+          {supported && (
+            <details className={styles.backup}>
+              <summary>Backup: listen to this tab instead</summary>
+              <ol className={styles.steps}>
+                <li>Press the button below.</li>
+                <li>
+                  In the window that opens, choose <strong>This tab</strong> (not the entire screen) and switch on <strong>Also share tab audio</strong>.
+                </li>
+                <li>Let the song play. Stop early for a quick draft, or let it finish for the whole song.</li>
+              </ol>
+              <button type="button" className="btn" onClick={start} disabled={disabled || !playerReady}>
+                Listen to this tab
+              </button>
+            </details>
+          )}
+        </>
+      ) : phase.kind === "asking" ? (
+        <p className="muted" role="status">
+          Waiting for you to share this tab…
+        </p>
+      ) : phase.kind === "downloading" ? (
+        <>
+          <p role="status">
+            Fetching the audio from YouTube{phase.bytes > 0 ? ` (${(phase.bytes / 1048576).toFixed(1)} MB)` : ""}…
+          </p>
+          <div className={styles.row}>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => {
+                download.current?.abort();
+                setPhase({ kind: "idle" });
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </>
       ) : phase.kind === "listening" ? (
         <>
@@ -190,7 +256,7 @@ export function AnalysePanel({ disabled, beatsPerBar, player, onResult, onUndo, 
               </button>
             )}
             <button type="button" className="btn btn-quiet" onClick={() => setPhase({ kind: "idle" })}>
-              Listen again
+              Start again
             </button>
           </div>
         </>
