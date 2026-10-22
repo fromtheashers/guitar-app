@@ -98,4 +98,17 @@ describe("analyzeAudio", () => {
     expect(patterns.length).toBeGreaterThan(0);
     expect(result.key).toBe("G");
   }, 60_000);
+
+  it("reads the groove from a separated drums track", async () => {
+    const progression = [["G", "C", "Em", "D", "G", "C", "Em", "D"]];
+    const full = synthSong({ bpm: 100, progression });
+    const instruments = synthSong({ bpm: 100, progression, drums: false });
+    const drums = full.map((v, i) => v - instruments[i]);
+    const result = await analyzeAudio(full, { beatsPerBar: 4, stems: { instruments, drums } });
+    expect(result.key).toBe("G");
+    const pattern = Object.values(result.patterns)[0];
+    const per = pattern.groove.steps / 4;
+    expect(pattern.groove.kick[0]).toBeGreaterThan(pattern.groove.kick[per]);
+    expect(pattern.groove.snare[per]).toBeGreaterThan(pattern.groove.snare[0]);
+  }, 60_000);
 });

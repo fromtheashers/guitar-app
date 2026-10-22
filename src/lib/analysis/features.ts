@@ -46,7 +46,12 @@ const BANDS = {
 export const onsetFrameTime = (f: number) => (f * ONSET_HOP + ONSET_SIZE / 2) / SR;
 export const chromaFrameTime = (f: number) => (f * CHROMA_HOP + CHROMA_SIZE / 2) / SR;
 
-export function onsetFeatures(samples: Float32Array): OnsetFeatures {
+/**
+ * Spectral-flux onsets per drum band. With `isolated` (a separated drums track), each
+ * frequency is floored at its average level first: the track sits on near-silence,
+ * where the log scale would otherwise make faint spill (snare into the kick band) look big.
+ */
+export function onsetFeatures(samples: Float32Array, isolated = false): OnsetFeatures {
   const binHz = SR / ONSET_SIZE;
   const bandBins = (lo: number, hi: number) => [Math.max(1, Math.floor(lo / binHz)), Math.ceil(hi / binHz)];
   const [k0, k1] = bandBins(...BANDS.kick);
@@ -62,11 +67,17 @@ export function onsetFeatures(samples: Float32Array): OnsetFeatures {
   const rms = new Float64Array(frames);
   let prev = new Float64Array(half + 1);
   let cur = new Float64Array(half + 1);
+  const floor = new Float64Array(half + 1);
+  if (isolated) {
+    stft(samples, ONSET_SIZE, ONSET_HOP, (_, mag) => {
+      for (let k = 0; k <= half; k++) floor[k] += mag[k] / Math.max(1, frames);
+    });
+  }
 
   stft(samples, ONSET_SIZE, ONSET_HOP, (f, mag) => {
     let e = 0;
     for (let k = 0; k <= half; k++) {
-      cur[k] = Math.log1p(100 * mag[k]);
+      cur[k] = Math.log1p(100 * Math.max(floor[k], mag[k]));
       e += mag[k] * mag[k];
     }
     rms[f] = Math.sqrt(e / (half + 1));

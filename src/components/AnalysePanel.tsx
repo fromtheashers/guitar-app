@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { analyzeAudio, type AnalysisResult } from "@/lib/analysis/analyze";
 import { chordProbabilities, type ChordProbs } from "@/lib/analysis/chordModel";
 import { cqtFrames } from "@/lib/analysis/cqt";
-import { FetchAudioError, fetchYouTubeAudio } from "@/lib/analysis/fetchAudio";
+import { FetchAudioError, fetchYouTubeAudio, type FetchedAudio } from "@/lib/analysis/fetchAudio";
 import { CaptureError, micCaptureSupported, startMicCapture, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
 import styles from "./AnalysePanel.module.css";
@@ -52,12 +52,13 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     [],
   );
 
-  const analyse = async (samples: Float32Array, toVideoTime?: (t: number) => number | null) => {
+  const analyse = async ({ samples, stems }: FetchedAudio, toVideoTime?: (t: number) => number | null) => {
     // The trained chord model does the chords; if it can't load, the built-in engine still drafts.
     let chordProbs: ChordProbs | undefined;
     try {
       setPhase({ kind: "working", fraction: 0.02, stage: "Loading the chord model" });
-      const frames = await cqtFrames(samples, () => new Promise((r) => setTimeout(r, 0)));
+      // Separated songs give the model the instruments without vocals or drums.
+      const frames = await cqtFrames(stems?.instruments ?? samples, () => new Promise((r) => setTimeout(r, 0)));
       setPhase({ kind: "working", fraction: 0.15, stage: "Recognising chords" });
       chordProbs = await chordProbabilities(frames, (f) => setPhase({ kind: "working", fraction: 0.15 + 0.35 * f, stage: "Recognising chords" }));
     } catch (e) {
@@ -68,6 +69,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
       beatsPerBar,
       toVideoTime,
       chordProbs,
+      stems,
       onProgress: (fraction, stage) => setPhase({ kind: "working", fraction: base + (1 - base) * fraction, stage }),
     });
     onResult(result);
@@ -80,11 +82,11 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     download.current = ctrl;
     setPhase({ kind: "downloading", bytes: 0 });
     try {
-      const samples = await fetchYouTubeAudio(videoUrl, (bytes) => setPhase({ kind: "downloading", bytes }), ctrl.signal);
+      const audio = await fetchYouTubeAudio(videoUrl, (bytes) => setPhase({ kind: "downloading", bytes }), ctrl.signal);
       download.current = null;
       setPhase({ kind: "working", fraction: 0, stage: "Preparing the audio" });
       // The file starts where the video starts, so audio time is video time.
-      await analyse(samples);
+      await analyse(audio);
     } catch (e) {
       if (ctrl.signal.aborted) return;
       setPhase({
@@ -105,7 +107,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     setPhase({ kind: "working", fraction: 0, stage: "Preparing the audio" });
     try {
       const capture = await h.finish();
-      await analyse(capture.samples, capture.toVideoTime);
+      await analyse({ samples: capture.samples }, capture.toVideoTime);
     } catch (e) {
       setPhase({
         kind: "error",

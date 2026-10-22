@@ -4,6 +4,12 @@
 //
 // Needs Node 20+ and yt-dlp (yt-dlp.exe next to this file on Windows, or on PATH).
 // Settings come from config.json next to this file: { "site": "https://…", "token": "…" }
+//
+// Optional: with "separator" set to a Python that has Demucs (see separate.py), the
+// helper splits each song into instruments and drums before sending it, so the site
+// can read chords without vocals and strum patterns from the drums alone. Needs
+// ffmpeg (ffmpeg.exe next to this file, "ffmpeg" in config.json, or on PATH). If
+// separation fails, the plain audio is sent instead.
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -18,6 +24,11 @@ const auth = { authorization: `Bearer ${config.token}` };
 const MAX_BYTES = 60 * 1024 * 1024;
 
 const exe = ["yt-dlp.exe", "yt-dlp"].map((f) => path.join(here, f)).find(existsSync) ?? "yt-dlp";
+const ffmpeg = config.ffmpeg ?? ["ffmpeg.exe", "ffmpeg"].map((f) => path.join(here, f)).find(existsSync) ?? "ffmpeg";
+const separator = config.separator;
+const separatorScript = config.separatorScript ?? path.join(here, "separate.py");
+// Demucs weights live beside the Python environment unless config says otherwise.
+const torchHome = config.torchHome ?? (separator ? path.resolve(path.dirname(separator), "..", "..", "models") : undefined);
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -46,10 +57,44 @@ function download(job) {
   });
 }
 
+/** Runs a program with `input` on stdin; collects stdout in memory. */
+function run(cmd, args, input, env) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, ...env } });
+    const chunks = [];
+    let stderr = "";
+    child.stdout.on("data", (c) => chunks.push(c));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.stdin.on("error", () => {}); // the program quit early; its exit code says why
+    child.on("error", (e) => resolve({ code: -1, out: Buffer.alloc(0), stderr: String(e) }));
+    child.on("close", (code) => resolve({ code, out: Buffer.concat(chunks), stderr }));
+    child.stdin.end(input);
+  });
+}
+
+/** Instruments (left) and drums (right) as a WAV, or null to send the plain audio. */
+async function separate(audio) {
+  if (!separator) return null;
+  const started = Date.now();
+  const decoded = await run(ffmpeg, ["-v", "error", "-i", "pipe:0", "-f", "f32le", "-ac", "2", "-ar", "44100", "pipe:1"], audio);
+  if (decoded.code !== 0 || !decoded.out.length) {
+    log("Couldn't decode the audio for separation:", decoded.stderr.trim().split("\n").pop());
+    return null;
+  }
+  const split = await run(separator, [separatorScript], decoded.out, torchHome ? { TORCH_HOME: torchHome } : {});
+  if (split.code !== 0 || split.out.length < 44) {
+    log("Separation failed, sending the plain audio:", split.stderr.trim().split("\n").pop());
+    return null;
+  }
+  log(`Separated in ${((Date.now() - started) / 1000).toFixed(1)} s.`);
+  return split.out;
+}
+
 async function send(job, result) {
   const body = "audio" in result ? result.audio : result.stderr;
   const type = "audio" in result ? "application/octet-stream" : "text/plain";
-  const res = await fetch(`${site}/api/helper/result/${job.id}`, { method: "POST", headers: { ...auth, "content-type": type }, body });
+  const headers = { ...auth, "content-type": type, ...(result.stems ? { "x-stems": "1" } : {}) };
+  const res = await fetch(`${site}/api/helper/result/${job.id}`, { method: "POST", headers, body });
   if (!res.ok) log("The site didn't take the result:", res.status);
 }
 
@@ -76,7 +121,11 @@ for (;;) {
     backoff = 2000;
     const job = await res.json();
     log(`Fetching ${job.videoId}…`);
-    const result = await download(job);
+    let result = await download(job);
+    if ("audio" in result) {
+      const stems = await separate(result.audio);
+      if (stems) result = { audio: stems, stems: true };
+    }
     log("audio" in result ? `Sent ${(result.audio.length / 1048576).toFixed(1)} MB.` : `Failed: ${result.stderr.split("\n").filter(Boolean).pop()}`);
     await send(job, result);
   } catch (e) {

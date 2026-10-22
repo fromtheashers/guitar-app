@@ -1,3 +1,5 @@
+
+
 // Turns audio into a draft chart: tempo, key, chords per bar, sections and a
 // drum-based strum pattern per section. Runs entirely in memory.
 
@@ -26,6 +28,8 @@ export interface AnalysisOptions {
   onProgress?: (fraction: number, stage: string) => void;
   /** Output of the trained chord model (chordModel.ts). Without it, chords come from chroma templates. */
   chordProbs?: ChordProbs;
+  /** Separated tracks from the home helper: drums for strum patterns and downbeats, instruments for harmony. */
+  stems?: { instruments: Float32Array; drums: Float32Array };
 }
 
 export interface AnalysisResult {
@@ -63,9 +67,11 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
   progress(0.05, "Finding the drums");
   await tick();
   const onset = onsetFeatures(samples);
+  // Kick, snare and hi-hat read far more cleanly from the drums on their own.
+  const drums = opts.stems ? onsetFeatures(opts.stems.drums, true) : onset;
   progress(0.3, "Listening for chords");
   await tick();
-  const harm = chromaFeatures(samples);
+  const harm = chromaFeatures(opts.stems?.instruments ?? samples);
   progress(0.55, "Finding the beat");
   await tick();
 
@@ -119,7 +125,7 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
 
   // Downbeats: where the kick is strongest and chords tend to change. Tracked bar by
   // bar, because the beat tracker sometimes gains or drops a beat mid-song.
-  const kickAt = beatFrames.map((f) => peakNear(onset.kick, f, 3));
+  const kickAt = beatFrames.map((f) => peakNear(drums.kick, f, 3));
   const downbeats = findDownbeats(labels, kickAt, pulsesPerBar);
 
   // Bars and their chords (changes allowed on beat 1 and halfway through).
@@ -180,12 +186,12 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
     byKind.set(kind, [...(byKind.get(kind) ?? []), ...s.bars]);
   }
   const norms = {
-    kick: percentile(onset.kick, 98) || 1,
-    snare: percentile(onset.snare, 98) || 1,
-    hat: percentile(onset.hat, 98) || 1,
+    kick: percentile(drums.kick, 98) || 1,
+    snare: percentile(drums.snare, 98) || 1,
+    hat: percentile(drums.hat, 98) || 1,
   };
   for (const [kind, kbars] of byKind) {
-    const groove = grooveFor(kbars, onset, norms, pulsesPerBar, stepsPerPulse);
+    const groove = grooveFor(kbars, drums, norms, pulsesPerBar, stepsPerPulse);
     const level = mean([...groove.kick, ...groove.snare, ...groove.hat]);
     const sparse = level < 0.1;
     const name = sparse ? "Let it ring" : "From the recording";

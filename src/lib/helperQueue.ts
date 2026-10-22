@@ -12,8 +12,14 @@ export interface HelperJob {
   format: "m4a" | "webm";
 }
 
+export interface HelperAudio {
+  audio: Uint8Array;
+  /** A WAV with instruments on the left and drums on the right (the helper separated it). */
+  stems: boolean;
+}
+
 interface Pending extends HelperJob {
-  resolve: (audio: Uint8Array) => void;
+  resolve: (result: HelperAudio) => void;
   reject: (stderr: string) => void;
 }
 
@@ -52,7 +58,7 @@ export function checkHelperToken(header: string | null): boolean {
 }
 
 /** Ask the helper for a video's audio. Rejects with yt-dlp's error output on failure. */
-export function fetchViaHelper(videoId: string, format: "m4a" | "webm", signal: AbortSignal): Promise<Uint8Array> {
+export function fetchViaHelper(videoId: string, format: "m4a" | "webm", signal: AbortSignal): Promise<HelperAudio> {
   return new Promise((resolve, reject) => {
     const job: Pending = {
       id: crypto.randomUUID(),
@@ -110,10 +116,10 @@ export function nextJob(signal: AbortSignal): Promise<HelperJob | null> {
   });
 }
 
-export function finishJob(id: string, result: { audio: Uint8Array } | { stderr: string }): boolean {
+export function finishJob(id: string, result: HelperAudio | { stderr: string }): boolean {
   const job = state.running.get(id);
   if (!job) return false;
-  if ("audio" in result) job.resolve(result.audio);
+  if ("audio" in result) job.resolve(result);
   else job.reject(result.stderr);
   return true;
 }

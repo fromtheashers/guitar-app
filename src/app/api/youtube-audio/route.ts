@@ -21,8 +21,10 @@ export async function GET(req: NextRequest) {
       return problem("The YouTube helper on your home computer isn't running. Switch the computer on, or use the microphone option below.", 503);
     }
     try {
-      const audio = await fetchViaHelper(id, format, req.signal);
-      return new Response(audio as BodyInit, { headers: { ...HEADERS, "content-length": String(audio.length) } });
+      const { audio, stems } = await fetchViaHelper(id, format, req.signal);
+      return new Response(audio as BodyInit, {
+        headers: { ...HEADERS, "content-length": String(audio.length), ...(stems ? { "x-stems": "1" } : {}) },
+      });
     } catch (e) {
       const stderr = e instanceof HelperError ? e.stderr : "";
       if (stderr.includes("helper timed out")) return problem("The home computer took too long. Check it's awake and online, then try again.", 504);
