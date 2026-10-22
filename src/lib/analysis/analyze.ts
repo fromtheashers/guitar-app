@@ -471,10 +471,18 @@ function findSections(bars: Bar[], coarse: (state: number) => string): FoundSect
     else names.set(r.group, extra.shift() ?? `Section ${String.fromCharCode(65 + r.group)}`);
   }
 
+  // A lone half-verse straight before a chorus, where the other verses are whole, leads into it.
+  const longestVerse = Math.max(0, ...runs.filter((r) => names.get(r.group) === "Verse").map((r) => r.bars.length));
+  const nameOf = (r: (typeof runs)[number], i: number) => {
+    if (bookends && i === runs.length - 1) return "Outro";
+    const name = names.get(r.group)!;
+    const leadIn = r.bars.length <= PHRASE && longestVerse > PHRASE && runs[i + 1]?.group === chorus;
+    return name === "Verse" && leadIn && ![...names.values()].includes("Pre-Chorus") ? "Pre-Chorus" : name;
+  };
   const seen = new Map<string, number>();
-  const verseCount = runs.filter((r) => names.get(r.group) === "Verse").length;
+  const verseCount = runs.filter((r, i) => nameOf(r, i) === "Verse").length;
   return runs.map((r, i) => {
-    const base = bookends && i === runs.length - 1 ? "Outro" : names.get(r.group)!;
+    const base = nameOf(r, i);
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const label = base === "Verse" && verseCount > 1 ? `Verse ${n}` : base;

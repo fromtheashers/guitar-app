@@ -43,9 +43,9 @@ Purpose: DrumGroove → StrumPattern (D/U/x/-, accents). Exports: strokesFromGro
 ### harmony.ts — detectKey (Krumhansl), STATES/NO_CHORD, labelBeats (Viterbi), slashBass.
 ### cqt.ts — cqtFrames(samples) → {data (log CQT, 144 bins, frame-major), times}; multirate CQT matching librosa/BTC features.
 ### chordModel.ts — trained BTC model (MIT, 170 classes) via onnxruntime-web, single-threaded. Exports VOCAB, CLASSES, chordProbabilities(frames) → {probs, times}.
-### modelHarmony.ts — beatProbabilities (frame → beat), labelBeatsWithModel (Viterbi with change penalty).
+### modelHarmony.ts — folds the model's 170 classes into 73 chart chords (FAMILY_STATES: plain, m, 7, sus4, dim, aug per root, plus N); beatProbabilities (frame → beat), chordPrior(key) (diatonic/borrowed/out-of-key), labelBeatsWithModel(probs, prior) (Viterbi).
 ### analyze.ts
-Purpose: whole-song analysis. Exports: analyzeAudio(samples, {beatsPerBar, toVideoTime, onProgress, chordProbs?}) → AnalysisResult {bpm, key, chart, timings, patterns, confidence}. Notes: with chordProbs, chords come from the model and the key from its chord tones; downbeat from kick + chord changes, half-bar chords, 4-bar phrase grouping into sections named by energy, groove per section kind; 6/8 tracked as 2 pulses.
+Purpose: whole-song analysis. Exports: analyzeAudio(samples, {beatsPerBar, toVideoTime, onProgress, chordProbs?}) → AnalysisResult {bpm, key, chart, timings, patterns, confidence}. Notes: with chordProbs, a first labelling pass finds the key, a second favours chords in it; slash bass needs a 3x dominant bass. Downbeats via findDownbeats (Viterbi over bar position, bars may run a beat short/long); a half bar gets its own chord only if it holds the whole half. findSections picks the phrase offset by repeat similarity, pairs halves, folds pickups, names Intro/Outro bookends, Bridge, lead-in Pre-Chorus. Older notes: downbeat from kick + chord changes, half-bar chords, 4-bar phrase grouping into sections named by energy, groove per section kind; 6/8 tracked as 2 pulses.
 ### fetchAudio.ts — fetchYouTubeAudio(url, onBytes, signal) → mono Float32Array at SR; picks m4a or webm by browser codec support.
 ### capture.ts — also startMicCapture (microphone backup) and micCaptureSupported.
 ### capture.ts (tab)
