@@ -43,28 +43,36 @@ export async function fetchYouTubeAudio(url: string, onBytes?: (bytes: number) =
   }
   chunks.length = 0;
 
-  let decoded: AudioBuffer;
+  const stemmed = res.headers.get("x-stems") === "1";
+  // Separated songs arrive as two WAVs back to back: harmony + drums (stereo), then the rest (mono).
+  const firstLength = stemmed && bytes.length > 8 ? new DataView(bytes.buffer).getUint32(4, true) + 8 : bytes.length;
+  const parts = firstLength < bytes.length ? [bytes.slice(0, firstLength), bytes.slice(firstLength)] : [bytes];
+
+  let decoded: AudioBuffer[];
   try {
     // An offline context at the analysis rate decodes and resamples in one step.
-    decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(bytes.buffer);
+    decoded = await Promise.all(parts.map((p) => new OfflineAudioContext(1, 1, SR).decodeAudioData(p.buffer)));
   } catch {
     throw new FetchAudioError("This browser couldn't read the audio YouTube sent. Try Chrome, or the backup option.");
   }
-  if (res.headers.get("x-stems") === "1" && decoded.numberOfChannels >= 2) {
-    // Harmony (bass and keys), drums, and the rest; all together they're the whole song.
-    const instruments = decoded.getChannelData(0);
-    const drums = decoded.getChannelData(1);
-    const samples = new Float32Array(decoded.length);
-    for (let c = 0; c < decoded.numberOfChannels; c++) {
-      const ch = decoded.getChannelData(c);
-      for (let i = 0; i < samples.length; i++) samples[i] += ch[i];
+  const main = decoded[0];
+  if (stemmed && main.numberOfChannels >= 2) {
+    const instruments = main.getChannelData(0);
+    const drums = main.getChannelData(1);
+    const samples = new Float32Array(main.length);
+    // All channels of both parts together are the whole song.
+    for (const buf of decoded) {
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        const ch = buf.getChannelData(c);
+        for (let i = 0; i < Math.min(samples.length, ch.length); i++) samples[i] += ch[i];
+      }
     }
     return { samples, stems: { instruments, drums } };
   }
-  const out = new Float32Array(decoded.length);
-  for (let c = 0; c < decoded.numberOfChannels; c++) {
-    const ch = decoded.getChannelData(c);
-    for (let i = 0; i < ch.length; i++) out[i] += ch[i] / decoded.numberOfChannels;
+  const out = new Float32Array(main.length);
+  for (let c = 0; c < main.numberOfChannels; c++) {
+    const ch = main.getChannelData(c);
+    for (let i = 0; i < ch.length; i++) out[i] += ch[i] / main.numberOfChannels;
   }
   return { samples: out };
 }

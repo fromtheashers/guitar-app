@@ -2,9 +2,10 @@
 # harmony to read chords from (bass, piano/keys and pads, without guitar, which in
 # worship music is often lead lines and swells), the drums, and everything else.
 #
-# Reads raw 32-bit float stereo at 44100 Hz on stdin; writes a 16-bit three-channel
-# WAV at 22050 Hz on stdout: harmony, drums, rest (vocals + guitar). Together the
-# three channels are the whole song. Nothing is written to disk.
+# Reads raw 32-bit float stereo at 44100 Hz on stdin; writes two 16-bit WAVs at
+# 22050 Hz back to back on stdout: a stereo one (harmony left, drums right) and a
+# mono one (the rest: vocals and guitar). Together they're the whole song. Plain
+# stereo and mono WAVs decode the same in every browser. Nothing is written to disk.
 # Uses the graphics card when PyTorch can see one.
 
 import io
@@ -55,15 +56,17 @@ def main() -> None:
     out = AF.resample(torch.stack([harmony, drums, rest]), IN_SR, OUT_SR)
     peak = float(out.abs().max()) or 1.0
     pcm = (out.T.numpy() / max(1.0, peak) * 32767).astype("<i2")
+    sys.stdout.buffer.write(wav_bytes(pcm[:, :2]) + wav_bytes(pcm[:, 2:]))
 
+
+def wav_bytes(pcm: np.ndarray) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
-        w.setnchannels(3)
+        w.setnchannels(pcm.shape[1])
         w.setsampwidth(2)
         w.setframerate(OUT_SR)
-        w.writeframes(pcm.tobytes())
-    sys.stdout.buffer.write(buf.getvalue())
-
+        w.writeframes(np.ascontiguousarray(pcm).tobytes())
+    return buf.getvalue()
 
 if __name__ == "__main__":
     main()
