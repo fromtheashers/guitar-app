@@ -1,20 +1,38 @@
 import type { NextRequest } from "next/server";
+import { fetchViaHelper, helperConfigured, helperOnline, HelperError } from "@/lib/helperQueue";
 import { problem, requireEditor } from "@/lib/http";
 import { youtubeId } from "@/lib/youtube";
-import { AudioFetchError, streamAudio } from "@/lib/ytAudio";
+import { AudioFetchError, explain, streamAudio } from "@/lib/ytAudio";
 
-// Teacher-only: streams a video's audio to the browser for analysis. Never stored.
+const HEADERS = { "content-type": "application/octet-stream", "cache-control": "no-store" };
+
+// Teacher-only: gets a video's audio for the browser to analyse. Never stored.
+// With a home helper set up (HELPER_TOKEN), the helper downloads it; otherwise
+// this server tries yt-dlp itself.
 export async function GET(req: NextRequest) {
   const denied = await requireEditor();
   if (denied) return denied;
   const id = youtubeId(req.nextUrl.searchParams.get("url") ?? "");
   if (!id) return problem("That doesn't look like a YouTube link.", 400);
+  const format = req.nextUrl.searchParams.get("format") === "webm" ? "webm" : "m4a";
+
+  if (helperConfigured()) {
+    if (!helperOnline()) {
+      return problem("The YouTube helper on your home computer isn't running. Switch the computer on, or use the microphone option below.", 503);
+    }
+    try {
+      const audio = await fetchViaHelper(id, format, req.signal);
+      return new Response(audio as BodyInit, { headers: { ...HEADERS, "content-length": String(audio.length) } });
+    } catch (e) {
+      const stderr = e instanceof HelperError ? e.stderr : "";
+      if (stderr.includes("helper timed out")) return problem("The home computer took too long. Check it's awake and online, then try again.", 504);
+      return problem(explain(stderr, "helper"), 502);
+    }
+  }
+
   try {
-    const format = req.nextUrl.searchParams.get("format") === "webm" ? "webm" : "m4a";
     const body = await streamAudio(id, format, req.signal);
-    return new Response(body, {
-      headers: { "content-type": "application/octet-stream", "cache-control": "no-store" },
-    });
+    return new Response(body, { headers: HEADERS });
   } catch (e) {
     return problem(e instanceof AudioFetchError ? e.message : "Couldn't fetch the audio from YouTube.", 502);
   }

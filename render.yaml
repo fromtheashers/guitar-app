@@ -14,5 +14,8 @@ services:
         sync: false
       - key: EDITOR_PASSCODE
         sync: false
+      # Password shared with the YouTube helper on the teacher's home computer.
+      - key: HELPER_TOKEN
+        sync: false
       - key: SESSION_SECRET
         generateValue: true

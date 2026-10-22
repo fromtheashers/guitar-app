@@ -14,11 +14,12 @@
 - `src/lib/`: server helpers (db, auth, validation, http) and client view-model (`songView.ts`).
 - `src/components/`: client UI (practice view, chart, strum grid, chord diagrams, editors, YouTube hook).
 - `src/app/`: pages and API routes.
+- `helper/`: home-computer YouTube helper (helper.mjs, Windows setup.ps1 that installs Node + yt-dlp and a logon task).
 - `.claude/skills/`: vendored agent skills (not app code; eslint ignores it).
 
 ## Key flows
 - Practice: `songs/[id]/page.tsx` → `getSong` → `PracticeView` → `buildView` (songView) → `ChartView` + `StrumGrid` + `ChordDiagram`; `useYouTube` time drives `eventAt`.
-- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) → decode at 22050 Hz → `analyzeAudio`.
+- Drafting (main): `AnalysePanel` → `fetchYouTubeAudio` (fetchAudio.ts) → `GET api/youtube-audio` → if HELPER_TOKEN: `fetchViaHelper` (helperQueue.ts; home helper long-polls `api/helper/next`, posts to `api/helper/result/[id]`) else `streamAudio` (ytAudio.ts, spawns bin/yt-dlp, stdout piped, never stored) → decode at 22050 Hz → `analyzeAudio`.
 - Drafting (backup, desktop Chrome/Edge): `SongEditor` → `AnalysePanel` → `startTabCapture` (capture.ts) → `analyzeAudio` (analyze.ts → features/beats/harmony) → chart text + timings + patterns into the draft.
 - Saving: editor `fetch` → `api/songs[/id]` → `requireEditor` (http.ts/auth.ts) → `songInput` (validate.ts) → `createSong`/`updateSong` (db.ts).
 - Link auto-fill: `SongEditor` (on new videoId) → `GET api/video-info` (teacher only) → fetchVideoFacts + guessSong → fills only empty fields.
@@ -43,7 +44,8 @@ Purpose: DrumGroove → StrumPattern (D/U/x/-, accents). Exports: strokesFromGro
 ### analyze.ts
 Purpose: whole-song analysis. Exports: analyzeAudio(samples, {beatsPerBar, toVideoTime, onProgress}) → AnalysisResult {bpm, key, chart, timings, patterns, confidence}. Notes: downbeat from kick + chord changes, half-bar chords, 4-bar phrase grouping into sections named by energy, groove per section kind; 6/8 tracked as 2 pulses.
 ### fetchAudio.ts — fetchYouTubeAudio(url, onBytes, signal) → mono Float32Array at SR; picks m4a or webm by browser codec support.
-### capture.ts
+### capture.ts — also startMicCapture (microphone backup) and micCaptureSupported.
+### capture.ts (tab)
 Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exports: startTabCapture(videoTime, onEnded) → CaptureHandle {finish, cancel, elapsed, level}; CaptureError (unsupported/denied/no-audio/too-short, min 20 s); tabCaptureSupported; videoTimeMap.
 ### analyze.test.ts — synthetic-song end-to-end tests.
 
@@ -55,6 +57,7 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### songView.ts — buildView(song, {mode, key, capo, numbers}) → SongView (sections with patterns and times, events, shapes, capo, keys); eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS.
 ### videoInfo.ts — pure: guessSong(VideoFacts) → SongGuess {title, artist, spotifyUrl, key, bpm, beatsPerBar} from title/channel/description/Music card; cleanTitle, embeddedJson, musicSection. Tests in videoInfo.test.ts.
 ### ytAudio.ts — server-only streamAudio(id, format, signal) → ReadableStream from yt-dlp (YTDLP_PATH or ./bin/yt-dlp, installed by scripts/install-yt-dlp.sh at Render build); explain(stderr) → readable error. 15-min/60 MB caps.
+### helperQueue.ts — server-only in-memory job queue for the home helper: helperConfigured, helperOnline (polled <45 s ago), checkHelperToken, fetchViaHelper, nextJob (25 s long poll), finishJob.
 ### videoFetch.ts — server-only fetchVideoFacts(id): YouTube oEmbed + watch page (best effort, 5 s timeout).
 ### sections.ts (sectionHue), youtube.ts (youtubeId), brand.ts (APP_NAME placeholder).
 

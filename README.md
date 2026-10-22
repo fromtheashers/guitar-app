@@ -40,7 +40,11 @@ The tables are created automatically the first time the app talks to the databas
 
 `render.yaml` describes the service. Set `DATABASE_URL` (from Neon) and `EDITOR_PASSCODE` in Render's Environment settings.
 
-### Letting the server past YouTube's bot check
+### YouTube helper (recommended)
+
+YouTube blocks most cloud servers. The helper in `helper/` runs on a home computer, polls the site for work, and downloads audio over the home connection. See `helper/README.md`. When `HELPER_TOKEN` is set in Render, all YouTube downloads go through it.
+
+### Letting the server past YouTube's bot check (alternative)
 
 YouTube blocks most cloud servers unless they're signed in. To sign the server in, use a spare Google account (not your main one):
 
