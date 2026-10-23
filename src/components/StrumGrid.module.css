@@ -78,6 +78,13 @@
   transition: background-color 90ms ease, color 90ms ease, transform 90ms var(--ease-out);
 }
 
+/* Press and hold accents a strum, so keep the phone's own long-press menu out of the way. */
+.grid[data-editable] .stroke {
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
 .stroke svg {
   width: 16px;
   height: 20px;

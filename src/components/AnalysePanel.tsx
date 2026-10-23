@@ -43,6 +43,10 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
   const download = useRef<AbortController | null>(null);
   const finishing = useRef(false);
 
+  // Keep the screen on while drafting: a locked phone pauses the page and stalls the draft.
+  const busy = phase.kind === "downloading" || phase.kind === "listening" || phase.kind === "working";
+  useWakeLock(busy);
+
   // Throw the audio away if the editor closes mid-capture.
   useEffect(
     () => () => {
@@ -176,7 +180,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
           <button type="button" className="btn btn-primary" onClick={fromYouTube} disabled={disabled}>
             Draft from YouTube
           </button>
-          <p className={styles.fine}>Takes about a minute. The audio is analysed on this device and never saved.</p>
+          <p className={styles.fine}>Takes about a minute; keep this screen open. The audio is analysed on this device and never saved.</p>
           {micSupported && (
             <details className={styles.backup}>
               <summary>Backup: listen through the microphone</summary>
@@ -310,4 +314,30 @@ function confidenceWord(c: number) {
   if (c >= 0.7) return "Good";
   if (c >= 0.45) return "Fair";
   return "Rough";
+}
+
+/** Holds a screen wake lock while `on`, taking it again when the page comes back into view. */
+function useWakeLock(on: boolean) {
+  useEffect(() => {
+    if (!on || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let live = true;
+    const take = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const l = await navigator.wakeLock.request("screen");
+        if (live) lock = l;
+        else void l.release();
+      } catch {
+        // Low battery mode or a browser that says no: drafting still works, the screen may just dim.
+      }
+    };
+    void take();
+    document.addEventListener("visibilitychange", take);
+    return () => {
+      live = false;
+      document.removeEventListener("visibilitychange", take);
+      void lock?.release();
+    };
+  }, [on]);
 }

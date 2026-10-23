@@ -67,13 +67,42 @@
 
 .item {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  grid-template-columns: 48px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   min-height: 56px;
   padding: 8px 12px;
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.item[data-dragging] {
+  background: var(--surface-3);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.4);
+}
+
+/* The number doubles as the drag handle, with grip dots beside it. */
+.handle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  align-self: stretch;
+  margin: -8px 0 -8px -12px;
+  padding-left: 8px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.handle svg {
+  fill: var(--ink-3);
+  flex: none;
+}
+
+.item[data-dragging] .handle {
+  cursor: grabbing;
 }
 
 .num {
@@ -102,15 +131,49 @@
 }
 
 .add {
-  display: flex;
-  align-items: flex-end;
+  display: grid;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-.add :global(.field) {
-  flex: 1;
-  min-width: 220px;
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.result:hover {
+  background: var(--surface);
+}
+
+.result:active {
+  background: var(--surface-2);
+}
+
+.plus {
+  flex: none;
+  color: var(--ink-2);
+  font-size: 14px;
 }
 
 .danger {
@@ -123,7 +186,11 @@
   }
 
   .item {
-    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .handle {
+    grid-row: 1 / span 3;
   }
 
   .key,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { countLabels, slotsPerBeat, strokesForMode, type Stroke, type StrumPattern } from "@/lib/music/strum";
 import styles from "./StrumGrid.module.css";
 
@@ -81,6 +82,35 @@ export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, s
     onChange({ ...pattern, name: "Custom", accents: next });
   };
 
+  // Phones have no right-click, so press and hold accents too. The click that
+  // follows a hold is swallowed so the stroke doesn't also change.
+  const hold = useRef<{ timer: number; fired: boolean }>({ timer: 0, fired: false });
+  const holdToAccent = (i: number) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      hold.current.fired = false;
+      window.clearTimeout(hold.current.timer);
+      hold.current.timer = window.setTimeout(() => {
+        hold.current.fired = true;
+        toggleAccent(i);
+        navigator.vibrate?.(15);
+      }, 450);
+    },
+    onPointerUp: () => window.clearTimeout(hold.current.timer),
+    onPointerLeave: () => window.clearTimeout(hold.current.timer),
+    onPointerCancel: () => window.clearTimeout(hold.current.timer),
+    onClick: () => {
+      if (hold.current.fired) hold.current.fired = false;
+      else setStroke(i);
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      // A long touch also raises contextmenu on Android; the timer has it covered.
+      if (hold.current.fired || (e.nativeEvent as PointerEvent).pointerType === "touch") return;
+      toggleAccent(i);
+    },
+  });
+
   const words = strokes.map((s, i) => (s === "-" ? null : `${labels[i]} ${STROKE_NAME[s]}${accents[i] ? " accented" : ""}`)).filter(Boolean);
 
   return (
@@ -128,12 +158,8 @@ export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, s
               data-stroke={s}
               data-accent={accents[i] || undefined}
               data-active={i === active || undefined}
-              aria-label={`${labels[i] || "step " + (i + 1)}: ${STROKE_NAME[s]}${accents[i] ? ", accented" : ""}. Click to change, right-click to accent.`}
-              onClick={() => setStroke(i)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                toggleAccent(i);
-              }}
+              aria-label={`${labels[i] || "step " + (i + 1)}: ${STROKE_NAME[s]}${accents[i] ? ", accented" : ""}. Click to change; press and hold, or right-click, to accent.`}
+              {...holdToAccent(i)}
             >
               <Arrow stroke={s} accent={accents[i]} />
             </button>

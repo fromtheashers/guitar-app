@@ -1,0 +1,58 @@
+/* Only touch screens get the chord keyboard; a laptop keyboard already has | [ ] and . */
+.bar {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .bar {
+    display: block;
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    background: var(--surface-2);
+    border-top: 1px solid var(--line-strong);
+  }
+}
+
+.scroll {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.key {
+  flex: none;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface-3);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.key:active {
+  background: var(--line-strong);
+}
+
+.symbol {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.chord {
+  font-weight: 650;
+}

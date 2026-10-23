@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { Song, SongInput } from "@/lib/db";
-import { parseChart } from "@/lib/music/chart";
+import { distinctChords, parseChart } from "@/lib/music/chart";
 import { defaultPresetFor, GROOVE_PRESETS, presetPattern, type StrumPattern } from "@/lib/music/strum";
 import { ALL_KEYS, ALL_MINOR_KEYS, buildView, eventAt } from "@/lib/songView";
 import type { SongGuess as VideoGuess } from "@/lib/videoInfo";
+import { shareLink } from "@/lib/share";
 import { youtubeId } from "@/lib/youtube";
 import { AnalysePanel } from "./AnalysePanel";
+import { ChartKeys } from "./ChartKeys";
 import { ChartView } from "./ChartView";
 import { StrumGrid } from "./StrumGrid";
 import { PLAYING, useYouTube } from "./useYouTube";
@@ -46,6 +48,38 @@ export function SongEditor({ song }: { song?: Song }) {
   const dirty = JSON.stringify(draft) !== saved;
 
   const set = <K extends keyof SongInput>(k: K, v: SongInput[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  // Keep an unsaved copy on this device, so a phone call or a closed tab doesn't lose the work.
+  const backupKey = `song-draft:${song?.id ?? "new"}`;
+  const [backup, setBackup] = useState<{ draft: SongInput; at: number } | null | undefined>(undefined);
+  useEffect(() => {
+    // Storage is only readable in the browser, so this runs after the first render.
+    const t = window.setTimeout(() => {
+      const found = readBackup(backupKey);
+      setBackup(found && JSON.stringify({ ...EMPTY, ...found.draft }) !== saved ? found : null);
+    }, 0);
+    return () => window.clearTimeout(t);
+    // Only on opening the song.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backupKey]);
+  useEffect(() => {
+    // Wait until the teacher has chosen whether to bring an old copy back.
+    if (backup !== null) return;
+    const t = window.setTimeout(() => writeBackup(backupKey, dirty ? draft : null), 600);
+    return () => window.clearTimeout(t);
+  }, [backup, backupKey, dirty, draft]);
+  const restoreBackup = () => {
+    if (backup) setDraft({ ...EMPTY, ...backup.draft });
+    setBackup(null);
+  };
+  const discardBackup = () => {
+    writeBackup(backupKey, null);
+    setBackup(null);
+  };
+
+  // The details fill themselves in from the link, so they stay folded away until needed.
+  const [detailsOpen, setDetailsOpen] = useState(() => Boolean(song) && !song?.title);
+  const titleInput = useRef<HTMLInputElement>(null);
 
   const videoId = youtubeId(draft.youtubeUrl);
   const { host: ytHost, player, ready: ytReady, state: ytState, error: ytError } = useYouTube(videoId);
@@ -127,8 +161,13 @@ export function SongEditor({ song }: { song?: Song }) {
       const body = (await res.json().catch(() => ({}))) as Song & { error?: string };
       if (!res.ok) {
         setMessage({ kind: "error", text: body.error ?? "Couldn't save. Try again." });
+        if (!draft.title.trim()) {
+          setDetailsOpen(true);
+          requestAnimationFrame(() => titleInput.current?.focus());
+        }
         return;
       }
+      writeBackup(backupKey, null);
       setSaved(JSON.stringify(draft));
       setMessage({ kind: "ok", text: "Saved." });
       if (!song) router.replace(`/edit/songs/${body.id}`);
@@ -138,7 +177,7 @@ export function SongEditor({ song }: { song?: Song }) {
     } finally {
       setBusy(false);
     }
-  }, [draft, song, router]);
+  }, [draft, song, router, backupKey]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -182,9 +221,12 @@ export function SongEditor({ song }: { song?: Song }) {
       return { ...d, timings };
     });
 
+  const videoBox = useRef<HTMLDivElement>(null);
   const startTapping = (from = 0) => {
     const p = player.current;
     if (!p) return;
+    // On a phone the tap pad covers the bottom of the screen, so bring the video up top.
+    if (window.matchMedia("(max-width: 900px)").matches) requestAnimationFrame(() => videoBox.current?.scrollIntoView({ block: "start" }));
     setTapIndex(from);
     setPicked(from);
     p.seekTo(from === 0 ? 0 : runUpTo(from), true);
@@ -264,8 +306,20 @@ export function SongEditor({ song }: { song?: Song }) {
     draft.patterns[kind] ?? draft.patterns.default ?? presetPattern(defaultPresetFor(draft.beatsPerBar), draft.beatsPerBar);
   const setPattern = (kind: string, p: StrumPattern) => set("patterns", { ...draft.patterns, [kind]: p });
 
+  const chartBox = useRef<HTMLTextAreaElement>(null);
+  const [typingChart, setTypingChart] = useState(false);
+  const usedChords = useMemo(() => distinctChords(chart), [chart]);
+
+  const [shared, setShared] = useState<string | null>(null);
+  const share = async () => {
+    if (!song) return;
+    const r = await shareLink(draft.title || "Song", `/songs/${song.id}`);
+    setShared(r === "copied" ? "Link copied. Paste it to your students." : r === "failed" ? "Couldn't share the link." : null);
+  };
+
   const time = useFollow(player, ytState === PLAYING);
   const nextChord = tapIndex !== null ? chart.events[tapIndex] : null;
+  const afterChord = tapIndex !== null && tapIndex + 1 < chart.events.length ? chart.events[tapIndex + 1] : null;
   const pickedEvent = picked !== null && picked < view.events.length ? view.events[picked] : null;
   const pickedWhere = (() => {
     if (picked === null) return "";
@@ -287,11 +341,16 @@ export function SongEditor({ song }: { song?: Song }) {
         </div>
         <div className={styles.actions}>
           {song && (
-            <Link href={`/songs/${song.id}`} className="btn btn-quiet">
-              Open as student
-            </Link>
+            <>
+              <Link href={`/songs/${song.id}`} className="btn btn-quiet">
+                Open as student
+              </Link>
+              <button type="button" className="btn btn-quiet" onClick={share}>
+                Share
+              </button>
+            </>
           )}
-          <button type="button" className="btn btn-primary" onClick={save} disabled={busy || (!dirty && Boolean(song))}>
+          <button type="button" className={`btn btn-primary ${styles.topSave}`} onClick={save} disabled={busy || (!dirty && Boolean(song))}>
             {busy ? "Saving…" : dirty || !song ? "Save" : "Saved"}
           </button>
         </div>
@@ -301,80 +360,110 @@ export function SongEditor({ song }: { song?: Song }) {
           {message.text}
         </p>
       )}
+      {shared && (
+        <p className={styles.ok} role="status">
+          {shared}
+        </p>
+      )}
+      {backup && (
+        <div className={styles.restore} role="status">
+          <p>
+            You have unsaved changes to this song from {when(backup.at)}.
+          </p>
+          <div className={styles.row}>
+            <button type="button" className="btn btn-primary btn-small" onClick={restoreBackup}>
+              Bring them back
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" onClick={discardBackup}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       <section className={styles.block} aria-labelledby="details">
         <h2 id="details">Song</h2>
-        <div className={styles.fields}>
-          <label className="field">
-            <span>Title</span>
-            <input className="input" value={draft.title} onChange={(e) => set("title", e.target.value)} required />
-          </label>
-          <label className="field">
-            <span>Artist</span>
-            <input className="input" value={draft.artist} onChange={(e) => set("artist", e.target.value)} />
-          </label>
-          <label className={`field ${styles.wide}`}>
-            <span>YouTube link</span>
-            <input
-              className="input"
-              inputMode="url"
-              placeholder="https://www.youtube.com/watch?v=…"
-              value={draft.youtubeUrl}
-              onChange={(e) => set("youtubeUrl", e.target.value)}
-              aria-invalid={Boolean(draft.youtubeUrl) && !videoId}
-            />
-            {draft.youtubeUrl && !videoId && <small className="error-text">That doesn&apos;t look like a YouTube link.</small>}
-            {videoId && (lookup.busy || lookup.text) && (
-              <small className={styles.lookup} role="status">
-                {lookup.busy ? "Reading the video's details…" : lookup.text}
-              </small>
-            )}
-          </label>
-          <label className={`field ${styles.wide}`}>
-            <span>Spotify link (optional, for a Listen button)</span>
-            <input className="input" inputMode="url" value={draft.spotifyUrl} onChange={(e) => set("spotifyUrl", e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Original key</span>
-            <select className="select" value={draft.originalKey} onChange={(e) => set("originalKey", e.target.value)}>
-              <optgroup label="Major">
-                {ALL_KEYS.map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Minor">
-                {ALL_MINOR_KEYS.map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </optgroup>
-            </select>
-          </label>
-          <label className="field">
-            <span>Time signature</span>
-            <select className="select" value={draft.beatsPerBar} onChange={(e) => set("beatsPerBar", Number(e.target.value))}>
-              <option value={4}>4/4</option>
-              <option value={3}>3/4</option>
-              <option value={6}>6/8</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Tempo (BPM)</span>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              max={300}
-              value={draft.bpm || ""}
-              onChange={(e) => set("bpm", Number(e.target.value) || 0)}
-            />
-          </label>
-        </div>
+        <label className="field">
+          <span>YouTube link</span>
+          <input
+            className="input"
+            inputMode="url"
+            placeholder="https://www.youtube.com/watch?v=…"
+            value={draft.youtubeUrl}
+            onChange={(e) => set("youtubeUrl", e.target.value)}
+            aria-invalid={Boolean(draft.youtubeUrl) && !videoId}
+          />
+          {draft.youtubeUrl && !videoId && <small className="error-text">That doesn&apos;t look like a YouTube link.</small>}
+          {videoId && (lookup.busy || lookup.text) && (
+            <small className={styles.lookup} role="status">
+              {lookup.busy ? "Reading the video's details…" : lookup.text}
+            </small>
+          )}
+        </label>
+        <details className={styles.details} open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
+          <summary>
+            <span className={styles.detailsLabel}>Details</span>
+            <span className={styles.detailsSummary}>
+              {draft.title.trim()
+                ? [draft.title, draft.artist, `Key ${draft.originalKey}`, timeName(draft.beatsPerBar), draft.bpm ? `${draft.bpm} BPM` : ""].filter(Boolean).join(" · ")
+                : "Title, artist, key and tempo. They fill in from the link; open to check or change them."}
+            </span>
+          </summary>
+          <div className={styles.fields}>
+            <label className="field">
+              <span>Title</span>
+              <input ref={titleInput} className="input" value={draft.title} onChange={(e) => set("title", e.target.value)} required />
+            </label>
+            <label className="field">
+              <span>Artist</span>
+              <input className="input" value={draft.artist} onChange={(e) => set("artist", e.target.value)} />
+            </label>
+            <label className={`field ${styles.wide}`}>
+              <span>Spotify link (optional, for a Listen button)</span>
+              <input className="input" inputMode="url" value={draft.spotifyUrl} onChange={(e) => set("spotifyUrl", e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Original key</span>
+              <select className="select" value={draft.originalKey} onChange={(e) => set("originalKey", e.target.value)}>
+                <optgroup label="Major">
+                  {ALL_KEYS.map((k) => (
+                    <option key={k}>{k}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Minor">
+                  {ALL_MINOR_KEYS.map((k) => (
+                    <option key={k}>{k}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+            <label className="field">
+              <span>Time signature</span>
+              <select className="select" value={draft.beatsPerBar} onChange={(e) => set("beatsPerBar", Number(e.target.value))}>
+                <option value={4}>4/4</option>
+                <option value={3}>3/4</option>
+                <option value={6}>6/8</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Tempo (BPM)</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={300}
+                value={draft.bpm || ""}
+                onChange={(e) => set("bpm", Number(e.target.value) || 0)}
+              />
+            </label>
+          </div>
+        </details>
       </section>
 
       <section className={styles.block} aria-labelledby="video">
         <h2 id="video">Video</h2>
         <div className={styles.videoRow}>
-          <div className={styles.video}>
+          <div className={styles.video} ref={videoBox}>
             {videoId ? <div ref={ytHost} className={styles.frame} /> : <div className={styles.noVideo}>Paste a YouTube link above to load the video.</div>}
             {ytError && <p className={styles.videoError}>{ytError}</p>}
           </div>
@@ -445,11 +534,17 @@ export function SongEditor({ song }: { song?: Song }) {
             <textarea
               className={`textarea ${styles.chartText}`}
               spellCheck={false}
+              ref={chartBox}
               value={draft.chart}
               placeholder={CHART_HELP}
               onChange={(e) => set("chart", e.target.value)}
+              onFocus={() => setTypingChart(true)}
+              onBlur={() => setTypingChart(false)}
             />
           </label>
+          {typingChart && (
+            <ChartKeys textarea={chartBox} value={draft.chart} onChange={(v) => set("chart", v)} songKey={draft.originalKey} used={usedChords} />
+          )}
           <div className={styles.preview}>
             {chart.events.length > 0 && (
               <div className={styles.syncBar} data-tapping={tapIndex !== null || undefined} role="group" aria-label="Sync">
@@ -529,7 +624,7 @@ export function SongEditor({ song }: { song?: Song }) {
       {kinds.length > 0 && (
         <section className={styles.block} aria-labelledby="strums">
           <h2 id="strums">Strum patterns</h2>
-          <p className="muted">One pattern per kind of section. Click a drum pane to change it, a strum to cycle down, up, chuck and rest; right-click a strum to accent it.</p>
+          <p className="muted">One pattern per kind of section. Tap a drum pane to change it, and a strum to cycle down, up, chuck and rest. Press and hold a strum (or right-click it) to accent it.</p>
           <div className={styles.patterns}>
             {kinds.map((kind) => {
               const p = patternFor(kind);
@@ -577,6 +672,52 @@ export function SongEditor({ song }: { song?: Song }) {
           </button>
         </section>
       )}
+
+      {/* Phones: a big pad to tap on while syncing, otherwise Save stays in reach. */}
+      {tapIndex !== null ? (
+        <div className={styles.tapPad} role="group" aria-label="Tap to sync">
+          <p className={styles.tapNext}>
+            <span className="muted">Next</span> <strong>{nextChord?.chord ?? "N.C."}</strong>
+            {afterChord && <span className="muted"> then {afterChord.chord ?? "N.C."}</span>}
+            <span className={`muted tnum ${styles.tapCount}`}>
+              {tapIndex + 1} of {chart.events.length}
+            </span>
+          </p>
+          <button
+            type="button"
+            className={styles.tapButton}
+            onPointerDown={(e) => {
+              // On the finger going down, not lifting, so the timing is as tight as it can be.
+              e.preventDefault();
+              tap();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") tap();
+            }}
+          >
+            Tap on the change
+          </button>
+          <div className={styles.tapActions}>
+            <button type="button" className="btn" onClick={tapBack} disabled={tapIndex === 0}>
+              Back one
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={stopTapping}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        !typingChart && (
+          <div className={styles.saveBar}>
+            <span className={styles.saveState} role="status">
+              {busy ? "Saving…" : dirty ? "Unsaved changes" : song ? "All changes saved" : "Not saved yet"}
+            </span>
+            <button type="button" className="btn btn-primary" onClick={save} disabled={busy || (!dirty && Boolean(song))}>
+              {busy ? "Saving…" : dirty || !song ? "Save" : "Saved"}
+            </button>
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -598,4 +739,35 @@ function useFollow(player: React.RefObject<{ getCurrentTime(): number } | null>,
 
 function list(items: string[]) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function timeName(beatsPerBar: number) {
+  return beatsPerBar === 6 ? "6/8" : `${beatsPerBar}/4`;
+}
+
+function when(at: number) {
+  const d = new Date(at);
+  const today = new Date().toDateString() === d.toDateString();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return today ? `today at ${time}` : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} at ${time}`;
+}
+
+// Storage can be missing or full (private windows); the backup is a nicety, so failures are ignored.
+function readBackup(key: string): { draft: SongInput; at: number } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    const v = raw ? (JSON.parse(raw) as { draft?: SongInput; at?: number }) : null;
+    return v?.draft && typeof v.at === "number" ? { draft: v.draft, at: v.at } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBackup(key: string, draft: SongInput | null) {
+  try {
+    if (draft) localStorage.setItem(key, JSON.stringify({ draft, at: Date.now() }));
+    else localStorage.removeItem(key);
+  } catch {
+    // Nothing to do.
+  }
 }

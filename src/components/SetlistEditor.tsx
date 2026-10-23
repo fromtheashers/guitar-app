@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Setlist, SetlistInput, SongSummary } from "@/lib/db";
+import { shareLink } from "@/lib/share";
 import { ALL_KEYS, ALL_MINOR_KEYS } from "@/lib/songView";
 import styles from "./SetlistEditor.module.css";
 
@@ -16,16 +17,53 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
   const [saved, setSaved] = useState(JSON.stringify(initial));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const [adding, setAdding] = useState("");
+  const [search, setSearch] = useState("");
+  const [shared, setShared] = useState<string | null>(null);
   const dirty = JSON.stringify(draft) !== saved;
   const byId = new Map(songs.map((s) => [s.id, s]));
 
   const setItems = (items: SetlistInput["items"]) => setDraft((d) => ({ ...d, items }));
-  const move = (i: number, by: number) => {
-    const items = [...draft.items];
-    const [it] = items.splice(i, 1);
-    items.splice(i + by, 0, it);
-    setItems(items);
+  const move = (i: number, by: number) =>
+    setDraft((d) => {
+      const items = [...d.items];
+      const [it] = items.splice(i, 1);
+      items.splice(i + by, 0, it);
+      return { ...d, items };
+    });
+
+  // Drag a song by its handle to reorder. Row positions are measured once when the
+  // drag starts, and the song moves whenever the finger passes a row's middle.
+  const listRef = useRef<HTMLOListElement>(null);
+  const drag = useRef<{ index: number; mids: number[] } | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const startDrag = (i: number, e: React.PointerEvent) => {
+    const rows = listRef.current ? [...listRef.current.children] : [];
+    drag.current = { index: i, mids: rows.map((r) => r.getBoundingClientRect()).map((r) => r.top + r.height / 2) };
+    setDragging(i);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    // The rows have moved since they were measured, but they're all the same height,
+    // so slot k is still where row k was.
+    let to = d.mids.findIndex((m) => e.clientY < m);
+    if (to === -1) to = d.mids.length - 1;
+    if (to !== d.index) {
+      move(d.index, to - d.index);
+      d.index = to;
+      setDragging(to);
+    }
+  };
+  const endDrag = () => {
+    drag.current = null;
+    setDragging(null);
+  };
+
+  const share = async () => {
+    if (!setlist) return;
+    const r = await shareLink(draft.name || "Setlist", `/setlists/${setlist.id}`);
+    setShared(r === "copied" ? "Link copied. Paste it to your students." : r === "failed" ? "Couldn't share the link." : null);
   };
 
   const save = async () => {
@@ -63,6 +101,8 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
   };
 
   const available = songs.filter((s) => !draft.items.some((i) => i.songId === s.id));
+  const q = search.trim().toLowerCase();
+  const matches = q ? available.filter((s) => `${s.title} ${s.artist}`.toLowerCase().includes(q)) : available;
 
   return (
     <div className={styles.page}>
@@ -75,9 +115,14 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
         </div>
         <div className={styles.actions}>
           {setlist && (
-            <Link href={`/setlists/${setlist.id}`} className="btn btn-quiet">
-              Open as student
-            </Link>
+            <>
+              <Link href={`/setlists/${setlist.id}`} className="btn btn-quiet">
+                Open as student
+              </Link>
+              <button type="button" className="btn btn-quiet" onClick={share}>
+                Share
+              </button>
+            </>
           )}
           <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !draft.name.trim() || (!dirty && Boolean(setlist))}>
             {busy ? "Saving…" : dirty || !setlist ? "Save" : "Saved"}
@@ -87,6 +132,11 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
       {message && (
         <p className={message.kind === "error" ? "error-text" : styles.ok} role={message.kind === "error" ? "alert" : "status"}>
           {message.text}
+        </p>
+      )}
+      {shared && (
+        <p className={styles.ok} role="status">
+          {shared}
         </p>
       )}
 
@@ -114,15 +164,33 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
       <section className={styles.block} aria-labelledby="songs">
         <h2 id="songs">Songs</h2>
         {draft.items.length === 0 ? (
-          <p className="muted">No songs yet. Add them below, in the order you&apos;ll play them.</p>
+          <p className="muted">No songs yet. Tap them below, in the order you&apos;ll play them.</p>
         ) : (
-          <ol className={styles.list}>
+          <ol className={styles.list} ref={listRef}>
             {draft.items.map((item, i) => {
               const song = byId.get(item.songId);
               const minor = song?.originalKey.endsWith("m");
               return (
-                <li key={item.songId} className={styles.item}>
-                  <span className={styles.num}>{i + 1}</span>
+                <li key={item.songId} className={styles.item} data-dragging={dragging === i || undefined}>
+                  <span
+                    className={styles.handle}
+                    onPointerDown={(e) => startDrag(i, e)}
+                    onPointerMove={moveDrag}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    aria-hidden="true"
+                    title="Drag to reorder"
+                  >
+                    <span className={styles.num}>{i + 1}</span>
+                    <svg viewBox="0 0 10 16" width="10" height="16">
+                      {[3, 8, 13].map((y) => (
+                        <g key={y}>
+                          <circle cx="2.5" cy={y} r="1.4" />
+                          <circle cx="7.5" cy={y} r="1.4" />
+                        </g>
+                      ))}
+                    </svg>
+                  </span>
                   <span className={styles.title}>
                     {song ? song.title : "Deleted song"}
                     {song?.artist && <span className="muted"> · {song.artist}</span>}
@@ -179,31 +247,37 @@ export function SetlistEditor({ setlist, songs }: { setlist?: Setlist; songs: So
             There are no songs to add yet. <Link href="/edit/songs/new">Add a song</Link> first.
           </p>
         ) : (
-          <form
-            className={styles.add}
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!adding) return;
-              setItems([...draft.items, { songId: adding }]);
-              setAdding("");
-            }}
-          >
+          <div className={styles.add}>
             <label className="field">
-              <span>Add a song</span>
-              <select className="select" value={adding} onChange={(e) => setAdding(e.target.value)} disabled={available.length === 0}>
-                <option value="">{available.length ? "Choose a song" : "Every song is in this list"}</option>
-                {available.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
-                    {s.artist ? ` · ${s.artist}` : ""}
-                  </option>
-                ))}
-              </select>
+              <span>Add songs</span>
+              <input
+                className="input"
+                type="search"
+                placeholder={available.length ? "Search your songs" : "Every song is in this list"}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                disabled={available.length === 0}
+              />
             </label>
-            <button type="submit" className="btn" disabled={!adding}>
-              Add
-            </button>
-          </form>
+            {available.length > 0 && (
+              <ul className={styles.results}>
+                {matches.slice(0, 30).map((s) => (
+                  <li key={s.id}>
+                    <button type="button" className={styles.result} onClick={() => setItems([...draft.items, { songId: s.id }])}>
+                      <span className={styles.title}>
+                        {s.title}
+                        {s.artist && <span className="muted"> · {s.artist}</span>}
+                      </span>
+                      <span className={styles.plus} aria-hidden="true">
+                        Add
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {matches.length === 0 && <li className="muted">No songs match &ldquo;{search}&rdquo;.</li>}
+              </ul>
+            )}
+          </div>
         )}
       </section>
 
