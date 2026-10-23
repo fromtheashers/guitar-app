@@ -160,49 +160,105 @@ export function SongEditor({ song }: { song?: Song }) {
     } else setMessage({ kind: "error", text: "Couldn't delete the song." });
   };
 
-  // Tap to sync: stamp the video time on each chord change in order.
+  // Tap to sync: stamp the video time on each chord change in order, from the
+  // start or from any chord picked in the preview.
   const [tapIndex, setTapIndex] = useState<number | null>(null);
-  const startTapping = () => {
+  const [picked, setPicked] = useState<number | null>(null);
+  const timingOf = (i: number) => (typeof draft.timings[i] === "number" ? (draft.timings[i] as number) : null);
+  // Where to start the video so there's a run-up to chord i: a few seconds before
+  // its old timing, or before the last synced chord ahead of it.
+  const runUpTo = (i: number) => {
+    for (let k = i; k >= 0; k--) {
+      const t = timingOf(k);
+      if (t !== null) return Math.max(0, t - (k === i ? 3 : 1));
+    }
+    return 0;
+  };
+  const setTiming = (i: number, t: number) =>
+    setDraft((d) => {
+      const timings = [...d.timings];
+      while (timings.length < chart.events.length) timings.push(null);
+      timings[i] = Math.max(0, Math.round(t * 1000) / 1000);
+      return { ...d, timings };
+    });
+
+  const startTapping = (from = 0) => {
     const p = player.current;
     if (!p) return;
-    setTapIndex(0);
-    p.seekTo(0, true);
+    setTapIndex(from);
+    setPicked(from);
+    p.seekTo(from === 0 ? 0 : runUpTo(from), true);
     p.playVideo();
   };
   const tap = () => {
     const p = player.current;
     if (tapIndex === null || !p) return;
-    const t = Math.round(p.getCurrentTime() * 1000) / 1000;
-    setDraft((d) => {
-      const timings = [...d.timings];
-      while (timings.length < chart.events.length) timings.push(null);
-      timings[tapIndex] = t;
-      return { ...d, timings };
-    });
+    setTiming(tapIndex, p.getCurrentTime());
     if (tapIndex + 1 >= chart.events.length) {
       setTapIndex(null);
       p.pauseVideo();
-    } else setTapIndex(tapIndex + 1);
+    } else {
+      setTapIndex(tapIndex + 1);
+      setPicked(tapIndex + 1);
+    }
+  };
+  // Made a mistake: go back one chord and replay a few seconds before it.
+  const tapBack = () => {
+    const p = player.current;
+    if (tapIndex === null || !p || tapIndex === 0) return;
+    const i = tapIndex - 1;
+    setTapIndex(i);
+    setPicked(i);
+    p.seekTo(runUpTo(i), true);
+    p.playVideo();
+  };
+  const stopTapping = () => {
+    setTapIndex(null);
+    player.current?.pauseVideo();
   };
   const tapFromKey = useEffectEvent(() => tap());
+  const tapBackFromKey = useEffectEvent(() => tapBack());
 
   useEffect(() => {
     if (tapIndex === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !(e.target as HTMLElement).closest("input, textarea, select")) {
+      if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+      if (e.code === "Space") {
         e.preventDefault();
         tapFromKey();
+      } else if (e.code === "Backspace") {
+        e.preventDefault();
+        tapBackFromKey();
       } else if (e.code === "Escape") setTapIndex(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [tapIndex]);
 
+  // Picking a chord in the preview: while tapping, carry on from it; otherwise
+  // select it and move the video there.
+  const pick = (i: number) => {
+    if (tapIndex !== null) {
+      startTapping(i);
+      return;
+    }
+    setPicked(i);
+    const t = timingOf(i);
+    if (t !== null) player.current?.seekTo(t, true);
+  };
+
   const nudge = (delta: number) =>
     set(
       "timings",
       draft.timings.map((t) => (typeof t === "number" ? Math.max(0, Math.round((t + delta) * 1000) / 1000) : t)),
     );
+  // Move the picked chord and everything after it, e.g. by a beat that was missed.
+  const shiftFrom = (from: number, delta: number) =>
+    set(
+      "timings",
+      draft.timings.map((t, i) => (i >= from && typeof t === "number" ? Math.max(0, Math.round((t + delta) * 1000) / 1000) : t)),
+    );
+  const beat = draft.bpm > 0 ? 60 / draft.bpm : 0;
 
   const patternFor = (kind: string): StrumPattern =>
     draft.patterns[kind] ?? draft.patterns.default ?? presetPattern(defaultPresetFor(draft.beatsPerBar), draft.beatsPerBar);
@@ -210,6 +266,15 @@ export function SongEditor({ song }: { song?: Song }) {
 
   const time = useFollow(player, ytState === PLAYING);
   const nextChord = tapIndex !== null ? chart.events[tapIndex] : null;
+  const pickedEvent = picked !== null && picked < view.events.length ? view.events[picked] : null;
+  const pickedWhere = (() => {
+    if (picked === null) return "";
+    for (const sec of view.sections) {
+      const bi = sec.bars.findIndex((b) => b.events.some((e) => e.index === picked));
+      if (bi >= 0) return `${sec.label}, bar ${bi + 1}`;
+    }
+    return "";
+  })();
 
   return (
     <div className={styles.page}>
@@ -349,33 +414,18 @@ export function SongEditor({ song }: { song?: Song }) {
                   ? "Write or analyse a chart first."
                   : `${timed} of ${chart.events.length} chord changes are synced to the video.`}
               </p>
-              {tapIndex === null ? (
-                <div className={styles.row}>
-                  <button type="button" className="btn" onClick={startTapping} disabled={!ytReady || chart.events.length === 0}>
-                    Tap along to sync
-                  </button>
-                  <button type="button" className="btn btn-quiet btn-small" onClick={() => nudge(-0.1)} disabled={!timed}>
-                    Earlier 0.1s
-                  </button>
-                  <button type="button" className="btn btn-quiet btn-small" onClick={() => nudge(0.1)} disabled={!timed}>
-                    Later 0.1s
-                  </button>
-                </div>
-              ) : (
-                <div className={styles.tapping}>
-                  <p>
-                    Tap on every chord change. Next: <strong>{nextChord?.chord ?? "N.C."}</strong> ({tapIndex + 1} of {chart.events.length})
-                  </p>
-                  <div className={styles.row}>
-                    <button type="button" className={`btn btn-primary ${styles.tap}`} onClick={tap}>
-                      Tap (space)
-                    </button>
-                    <button type="button" className="btn btn-quiet" onClick={() => setTapIndex(null)}>
-                      Stop
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className={styles.row}>
+                <button type="button" className="btn" onClick={() => startTapping(0)} disabled={!ytReady || chart.events.length === 0 || tapIndex !== null}>
+                  Tap along from the start
+                </button>
+                <button type="button" className="btn btn-quiet btn-small" onClick={() => nudge(-0.1)} disabled={!timed}>
+                  All earlier 0.1s
+                </button>
+                <button type="button" className="btn btn-quiet btn-small" onClick={() => nudge(0.1)} disabled={!timed}>
+                  All later 0.1s
+                </button>
+              </div>
+              <p className="muted">To fix part of the song, click a chord in the chart preview below and tap from there.</p>
               {ytState === PLAYING && tapIndex === null && timed > 0 && (
                 <p className="muted">Playing: the preview below follows the video.</p>
               )}
@@ -401,6 +451,61 @@ export function SongEditor({ song }: { song?: Song }) {
             />
           </label>
           <div className={styles.preview}>
+            {chart.events.length > 0 && (
+              <div className={styles.syncBar} data-tapping={tapIndex !== null || undefined} role="group" aria-label="Sync">
+                {tapIndex !== null ? (
+                  <>
+                    <p>
+                      Tap on <strong>{nextChord?.chord ?? "N.C."}</strong> <span className="muted">({tapIndex + 1} of {chart.events.length})</span>
+                    </p>
+                    <div className={styles.row}>
+                      <button type="button" className={`btn btn-primary ${styles.tap}`} onClick={tap}>
+                        Tap (space)
+                      </button>
+                      <button type="button" className="btn" onClick={tapBack} disabled={tapIndex === 0}>
+                        Back one (⌫)
+                      </button>
+                      <button type="button" className="btn btn-quiet" onClick={stopTapping}>
+                        Done
+                      </button>
+                    </div>
+                    <p className={styles.hint}>Missed one? Press Back to replay it, or click any chord below to carry on from there. Done keeps everything after this chord as it was.</p>
+                  </>
+                ) : pickedEvent ? (
+                  <>
+                    <p>
+                      <strong>{pickedEvent.label}</strong> <span className="muted">· {pickedWhere} · {pickedEvent.time === null ? "not synced" : `${pickedEvent.time.toFixed(2)} s`}</span>
+                    </p>
+                    <div className={styles.row}>
+                      <button type="button" className="btn btn-primary" onClick={() => startTapping(picked!)} disabled={!ytReady}>
+                        Tap from here
+                      </button>
+                      <button type="button" className="btn" onClick={() => player.current && setTiming(picked!, player.current.getCurrentTime())} disabled={!ytReady}>
+                        Set to video time
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => setTiming(picked!, pickedEvent.time! - 0.1)} disabled={pickedEvent.time === null}>
+                        −0.1s
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => setTiming(picked!, pickedEvent.time! + 0.1)} disabled={pickedEvent.time === null}>
+                        +0.1s
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => shiftFrom(picked!, -beat)} disabled={!beat || pickedEvent.time === null}>
+                        −1 beat
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => shiftFrom(picked!, beat)} disabled={!beat || pickedEvent.time === null}>
+                        +1 beat
+                      </button>
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => setPicked(null)}>
+                        Close
+                      </button>
+                    </div>
+                    <p className={styles.hint}>±0.1s moves just this chord. ±1 beat moves this chord and everything after it, for a beat that was added or missed.</p>
+                  </>
+                ) : (
+                  <p className={styles.hint}>Click a chord to fix its timing, or to re-sync from it without starting the song again.</p>
+                )}
+              </div>
+            )}
             {chart.errors.length > 0 && (
               <ul className={styles.errors} role="alert">
                 {chart.errors.slice(0, 6).map((er, i) => (
@@ -413,8 +518,9 @@ export function SongEditor({ song }: { song?: Song }) {
             <ChartView
               view={view}
               beatsPerBar={draft.beatsPerBar}
-              activeEvent={ytState === PLAYING ? eventAt(view.events, time) : -1}
-              onSeek={(t) => player.current?.seekTo(t, true)}
+              activeEvent={tapIndex !== null ? -1 : ytState === PLAYING ? eventAt(view.events, time) : -1}
+              onPick={pick}
+              picked={picked}
             />
           </div>
         </div>

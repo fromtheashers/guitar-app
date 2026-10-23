@@ -12,10 +12,13 @@ interface Props {
   onSeek?: (time: number) => void;
   onLoopSection?: (sectionIndex: number) => void;
   loopedSection?: number | null;
+  /** Editor: each chord becomes its own button, for picking one to re-sync. */
+  onPick?: (eventIndex: number) => void;
+  picked?: number | null;
 }
 
 /** The whole song as rows of bar panes, tinted by section. */
-export function ChartView({ view, beatsPerBar, activeEvent = -1, onSeek, onLoopSection, loopedSection = null }: Props) {
+export function ChartView({ view, beatsPerBar, activeEvent = -1, onSeek, onLoopSection, loopedSection = null, onPick, picked = null }: Props) {
   if (!view.sections.length) {
     return <p className="muted">No chart yet.</p>;
   }
@@ -41,22 +44,39 @@ export function ChartView({ view, beatsPerBar, activeEvent = -1, onSeek, onLoopS
             <ol className={styles.bars}>
               {s.bars.map((b, bi) => {
                 const isActive = b.events.some((e) => e.index === activeEvent);
-                const seekable = onSeek && b.start !== null;
+                const seekable = !onPick && onSeek && b.start !== null;
                 const content = (
                   <>
                     {b.cue && <span className={styles.cue}>{b.cue}</span>}
                     <span className={styles.chords}>
                       {b.events.length === 0 && <span className={styles.chord}>–</span>}
-                      {b.events.map((e) => (
-                        <span
-                          key={e.index}
-                          className={styles.chord}
-                          data-now={e.index === activeEvent || undefined}
-                          style={{ gridColumn: `${e.beat + 1} / span 1` }}
-                        >
-                          {e.label}
-                        </span>
-                      ))}
+                      {b.events.map((e) =>
+                        onPick ? (
+                          <button
+                            type="button"
+                            key={e.index}
+                            className={`${styles.chord} ${styles.pick}`}
+                            data-now={e.index === activeEvent || undefined}
+                            data-picked={e.index === picked || undefined}
+                            data-untimed={e.time === null || undefined}
+                            style={{ gridColumn: `${e.beat + 1} / span 1` }}
+                            onClick={() => onPick(e.index)}
+                            aria-pressed={e.index === picked}
+                            title={e.time === null ? "Not synced yet" : `At ${e.time.toFixed(1)} s`}
+                          >
+                            {e.label}
+                          </button>
+                        ) : (
+                          <span
+                            key={e.index}
+                            className={styles.chord}
+                            data-now={e.index === activeEvent || undefined}
+                            style={{ gridColumn: `${e.beat + 1} / span 1` }}
+                          >
+                            {e.label}
+                          </span>
+                        ),
+                      )}
                     </span>
                   </>
                 );

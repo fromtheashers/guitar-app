@@ -134,9 +134,30 @@
   margin: 0;
 }
 
-.tapping {
+/* Sync controls ride above the chart preview, so they stay in reach while scrolling. */
+.syncBar {
+  position: sticky;
+  top: 64px;
+  z-index: 5;
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-l);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.syncBar[data-tapping] {
+  border-color: var(--amber);
+}
+
+.syncBar p {
+  margin: 0;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .tap {
@@ -213,6 +234,20 @@
 
 .danger {
   padding-top: 24px;
+}
+
+/* On a laptop the chart text stays in view while you scroll the preview. */
+@media (min-width: 901px) {
+  .chartGrid > label {
+    position: sticky;
+    top: 72px;
+  }
+
+  .chartText {
+    height: calc(100dvh - 96px);
+    min-height: 320px;
+    resize: none;
+  }
 }
 
 @media (max-width: 900px) {

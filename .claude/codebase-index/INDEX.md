@@ -66,10 +66,10 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 
 ## src/components
 ### PracticeView.tsx — student practice screen: video, mode/key/capo/numbers/speed controls (saved in localStorage), now pane, strum grid, chart following the video, section looping, shortcuts (space, arrows). Transport row: Play/Pause, Stop (pause + back to 0:00, clears loop), ±5 s, clock; fixed to the bottom of the screen at ≤960px.
-### ChartView.tsx — chart as leaded panes per section; props view, beatsPerBar, activeEvent, onSeek, onLoopSection, loopedSection.
+### ChartView.tsx — chart as leaded panes per section; props view, beatsPerBar, activeEvent, onSeek, onLoopSection, loopedSection; onPick + picked (editor) make each chord a button (untimed ones dimmed).
 ### StrumGrid.tsx — drum rows + strum row; editable when onChange given.
 ### ChordDiagram.tsx — SVG chord box (pickShape), sizes s/m/l.
-### SongEditor.tsx — teacher song editor: details, video, AnalysePanel, tap-to-sync, chart text + live preview, per-section patterns, notes, save (Ctrl+S)/delete.
+### SongEditor.tsx — teacher song editor: details, video, AnalysePanel, tap-to-sync (from the start, or from any chord picked in the preview; Back one = Backspace replays from a run-up), sticky sync bar over the preview (picked chord: tap from here, set to video time, ±0.1 s for that chord, ±1 beat for it and all later), chart text sticky on laptops, per-section patterns, notes, save (Ctrl+S)/delete.
 ### AnalysePanel.tsx — "Draft from YouTube" (plus mic/tab backups) → chord model → analyzeAudio, with progress, summary and undo.
 ### SetlistEditor.tsx — name, description, ordered songs with per-song key.
 ### useYouTube.ts — IFrame API hook → {host, player, ready, state, error}; PLAYING, BUFFERING, ENDED.
