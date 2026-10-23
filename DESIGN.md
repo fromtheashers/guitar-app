@@ -73,11 +73,11 @@ A dark church window at rehearsal: a near-black lead ground with panes of jewel 
 
 ## Typography
 
-One family, Schibsted Grotesk. Chords are the loudest type on the page (20px in bars, very large in the "now" pane). Tabular figures only on numeric UI (`.tnum`, strum grid, timers): the font's tabular full stop reads as a stray space in prose.
+One family, Schibsted Grotesk. Chords are the loudest type on the page (20px in bars, 40px beside the shape in the player). Tabular figures only on numeric UI (`.tnum`, strum grid, timers): the font's tabular full stop reads as a stray space in prose.
 
 ## Layout
 
-Practice screen: video and controls on the left, the "now" pane (section, current chord with diagram, next chord, strum grid) on the right; the chart below. Below 900px it stacks. Charts keep four bars to a line at every width because players read in four-bar phrases.
+Practice screen: video, settings and the chart on the left; on the right the player pane (section, current chord with its diagram, next chord, strum grid, song position, transport, auto-scroll) stays in view while the chart scrolls. At 960px and below it is one column and the player docks to the bottom of the screen, with only the strum row of the grid. The chart is where the chord names live, so the player shows the chord name at a modest size beside its shape. Charts keep four bars to a line at every width because players read in four-bar phrases.
 
 ## Elevation & Depth
 

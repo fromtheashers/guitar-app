@@ -7,6 +7,7 @@ import { cqtFrames } from "@/lib/analysis/cqt";
 import { FetchAudioError, fetchYouTubeAudio, type FetchedAudio } from "@/lib/analysis/fetchAudio";
 import { CaptureError, micCaptureSupported, startMicCapture, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
+import { useWakeLock } from "./useWakeLock";
 import styles from "./AnalysePanel.module.css";
 
 interface Props {
@@ -314,30 +315,4 @@ function confidenceWord(c: number) {
   if (c >= 0.7) return "Good";
   if (c >= 0.45) return "Fair";
   return "Rough";
-}
-
-/** Holds a screen wake lock while `on`, taking it again when the page comes back into view. */
-function useWakeLock(on: boolean) {
-  useEffect(() => {
-    if (!on || !("wakeLock" in navigator)) return;
-    let lock: WakeLockSentinel | null = null;
-    let live = true;
-    const take = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const l = await navigator.wakeLock.request("screen");
-        if (live) lock = l;
-        else void l.release();
-      } catch {
-        // Low battery mode or a browser that says no: drafting still works, the screen may just dim.
-      }
-    };
-    void take();
-    document.addEventListener("visibilitychange", take);
-    return () => {
-      live = false;
-      document.removeEventListener("visibilitychange", take);
-      void lock?.release();
-    };
-  }, [on]);
 }

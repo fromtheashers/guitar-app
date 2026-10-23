@@ -9,6 +9,8 @@ interface Props {
   beatsPerBar: number;
   /** Chord-change index playing now, or -1. */
   activeEvent?: number;
+  /** Beat playing now inside the active bar (0-based), or -1. */
+  activeBeat?: number;
   onSeek?: (time: number) => void;
   onLoopSection?: (sectionIndex: number) => void;
   loopedSection?: number | null;
@@ -18,7 +20,7 @@ interface Props {
 }
 
 /** The whole song as rows of bar panes, tinted by section. */
-export function ChartView({ view, beatsPerBar, activeEvent = -1, onSeek, onLoopSection, loopedSection = null, onPick, picked = null }: Props) {
+export function ChartView({ view, beatsPerBar, activeEvent = -1, activeBeat = -1, onSeek, onLoopSection, loopedSection = null, onPick, picked = null }: Props) {
   if (!view.sections.length) {
     return <p className="muted">No chart yet.</p>;
   }
@@ -78,6 +80,13 @@ export function ChartView({ view, beatsPerBar, activeEvent = -1, onSeek, onLoopS
                         ),
                       )}
                     </span>
+                    {isActive && activeBeat >= 0 && (
+                      <span className={styles.beats} aria-hidden="true">
+                        {Array.from({ length: beatsPerBar }, (_, i) => (
+                          <i key={i} data-now={i === activeBeat || undefined} data-past={i < activeBeat || undefined} />
+                        ))}
+                      </span>
+                    )}
                   </>
                 );
                 return (

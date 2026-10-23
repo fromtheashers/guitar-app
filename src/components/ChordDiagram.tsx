@@ -8,6 +8,8 @@ interface Props {
   size?: "s" | "m" | "l";
   /** Highlight as the chord playing now. */
   active?: boolean;
+  /** Show the chord name above the box (off when the name is shown beside it). */
+  caption?: boolean;
 }
 
 export function pickShape(chord: string, easy: boolean): Shape | undefined {
@@ -19,7 +21,7 @@ export function pickShape(chord: string, easy: boolean): Shape | undefined {
 const W = { s: 56, m: 84, l: 120 };
 
 /** Fingering box for one chord: strings left to right from low E, frets top to bottom. */
-export function ChordDiagram({ chord, easy = false, size = "m", active = false }: Props) {
+export function ChordDiagram({ chord, easy = false, size = "m", active = false, caption = true }: Props) {
   const shape = pickShape(chord, easy);
   const width = W[size];
   if (!shape) {
@@ -49,7 +51,7 @@ export function ChordDiagram({ chord, easy = false, size = "m", active = false }
 
   return (
     <figure className={styles.wrap} style={{ width }} data-active={active || undefined}>
-      <figcaption className={styles.name}>{chord}</figcaption>
+      <figcaption className={caption ? styles.name : "visually-hidden"}>{chord}</figcaption>
       <svg viewBox={`0 0 100 ${top + gridH + 6}`} role="img" aria-label={label} className={styles.svg}>
         {base === 1 ? (
           <rect x={padX} y={top - 3} width={gridW} height={3} rx={1} className={styles.nut} />

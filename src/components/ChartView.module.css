@@ -65,6 +65,7 @@
 }
 
 .barButton {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -96,6 +97,29 @@ button.barButton:active {
   background: color-mix(in srgb, var(--tint), var(--hue) 30%);
   outline: 2px solid var(--amber);
   outline-offset: -2px;
+}
+
+/* Beat ticks along the foot of the bar playing now, one under each beat column. */
+.beats {
+  position: absolute;
+  inset: auto 12px 4px;
+  display: grid;
+  grid-template-columns: repeat(var(--beats), minmax(0, 1fr));
+  gap: 3px;
+}
+
+.beats i {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.beats i[data-past] {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+.beats i[data-now] {
+  background: var(--amber);
 }
 
 .cue {
@@ -168,5 +192,9 @@ button.barButton:active {
 
   .cue {
     font-size: 11px;
+  }
+
+  .beats {
+    inset: auto 8px 3px;
   }
 }
