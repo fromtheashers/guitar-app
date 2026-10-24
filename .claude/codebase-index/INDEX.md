@@ -57,6 +57,7 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### auth.ts — passcodeConfigured, checkPasscode, isEditor, signIn, signOut (HMAC cookie).
 ### validate.ts — songInput, setlistInput (sanitise request bodies).
 ### http.ts — json, problem, requireEditor, readJson, dbError for API routes.
+### glance.ts — glance(view) → sections of folded four-bar lines (glanceLines, foldLines: one line or a two-line phrase repeated back to back); glanceChords. Tests in glance.test.ts.
 ### songView.ts — buildView(song, {mode, key, capo, numbers}) → SongView (sections with patterns and times, events, shapes, capo, keys); eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS.
 ### videoInfo.ts — pure: guessSong(VideoFacts) → SongGuess {title, artist, spotifyUrl, key, bpm, beatsPerBar} from title/channel/description/Music card; cleanTitle, embeddedJson, musicSection. Tests in videoInfo.test.ts.
 ### ytAudio.ts — server-only streamAudio(id, format, signal) → ReadableStream from yt-dlp (YTDLP_PATH or ./bin/yt-dlp, installed by scripts/install-yt-dlp.sh at Render build); explain(stderr) → readable error. 15-min/60 MB caps.
@@ -65,7 +66,8 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### sections.ts (sectionHue), youtube.ts (youtubeId), brand.ts (APP_NAME placeholder), share.ts (shareLink: share sheet, else copy link).
 
 ## src/components
-### PracticeView.tsx — student practice screen. Left column: video, Easy/Advanced plus settings (key, capo, numbers, speed; folded behind one summary button at ≤960px), capo line, chart (ChartView with beat ticks), chord shapes, notes. Player pane (sticky right on laptops, docked to the bottom at ≤960px, height fed to --dock): section, current chord + diagram, next chord, StrumGrid (strum row only when docked), progress bar with section marks (range input scrub), transport (Play/Pause, Stop, ±5 s, Auto-scroll checkbox saved as pref:follow). Tapping a bar or looping starts one bar early; arrows move time even when paused; screen wake lock (useWakeLock) until ten idle minutes.
+### PracticeView.tsx — student practice screen. Left column: video, Easy/Advanced plus settings (key, capo, numbers, speed; folded behind one summary button at ≤960px), capo line, SongGlance (open state saved as pref:glance), chart (ChartView with beat ticks), chord shapes, notes. Player pane (sticky right on laptops, docked to the bottom at ≤960px, height fed to --dock): section, current chord + diagram, next chord, StrumGrid (strum row only when docked), progress bar with section marks (range input scrub), transport (Play/Pause, Stop, ±5 s, Auto-scroll checkbox saved as pref:follow). Tapping a bar or looping starts one bar early; arrows move time even when paused; screen wake lock (useWakeLock) until ten idle minutes.
+### SongGlance.tsx — "Song at a glance": static card of the whole song (glance.ts), sections tinted by hue, repeats as ×N, held bars as "–", chord list; Hide/Show.
 ### ChartView.tsx — chart as leaded panes per section; props view, beatsPerBar, activeEvent, onSeek, onLoopSection, loopedSection; onPick + picked (editor) make each chord a button (untimed ones dimmed). activeBeat draws beat ticks along the foot of the active bar.
 ### StrumGrid.tsx — drum rows + strum row; editable when onChange given (tap cycles a strum; press-and-hold 450 ms or right-click accents).
 ### ChordDiagram.tsx — SVG chord box (pickShape), sizes s/m/l; caption={false} hides the name visually.

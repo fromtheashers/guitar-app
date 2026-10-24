@@ -1,0 +1,166 @@
+/* Song at a glance: a small leaded window of the whole song, tinted by section. */
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px -8px -4px 0;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.head :global(.btn) {
+  gap: 6px;
+}
+
+.body {
+  display: grid;
+  gap: 12px;
+}
+
+.rows {
+  display: grid;
+  gap: 8px;
+}
+
+.row {
+  --hue: var(--ink-3);
+  --tint: var(--surface-2);
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.row[data-hue="cobalt"] {
+  --hue: var(--cobalt);
+  --tint: var(--cobalt-tint);
+}
+
+.row[data-hue="ruby"] {
+  --hue: var(--ruby);
+  --tint: var(--ruby-tint);
+}
+
+.row[data-hue="green"] {
+  --hue: var(--green);
+  --tint: var(--green-tint);
+}
+
+.row[data-hue="amber"] {
+  --hue: var(--amber);
+  --tint: var(--amber-tint);
+}
+
+.name {
+  padding-top: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--hue), white 22%);
+}
+
+.row[data-hue="plain"] .name {
+  color: var(--ink-2);
+}
+
+.lines {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bars {
+  flex: 1;
+  min-width: 0;
+  max-width: 440px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  border-radius: 6px;
+  background: var(--lead);
+}
+
+.bar {
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  background: var(--tint);
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar[data-hold] {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.times {
+  flex: none;
+  min-width: 26px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.foot b {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+@media (max-width: 420px) {
+  .card {
+    padding: 12px 12px 14px;
+  }
+
+  .row {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .bar {
+    padding: 0 5px;
+    font-size: 13px;
+  }
+}

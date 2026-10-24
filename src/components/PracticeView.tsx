@@ -8,6 +8,7 @@ import { sectionHue } from "@/lib/sections";
 import { youtubeId } from "@/lib/youtube";
 import { ChartView } from "./ChartView";
 import { ChordDiagram } from "./ChordDiagram";
+import { SongGlance } from "./SongGlance";
 import { StrumGrid } from "./StrumGrid";
 import { BUFFERING, PLAYING, useYouTube } from "./useYouTube";
 import { useWakeLock } from "./useWakeLock";
@@ -81,6 +82,7 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const [mode, setMode] = usePref<Mode>("pref:mode", "easy");
   const [numbers, setNumbers] = usePref<boolean>("pref:numbers", false);
   const [follow, setFollow] = usePref<boolean>("pref:follow", true);
+  const [glanceOpen, setGlanceOpen] = usePref<boolean>("pref:glance", true);
   const [key, setKey] = useState(initialKey && parseKey(initialKey) ? initialKey : song.originalKey);
   const [capo, setCapo] = useState<number | "auto">("auto");
   const [rate, setRate] = useState(1);
@@ -368,6 +370,8 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
         {view.errors.length > 0 && (
           <p className="error-text">Part of this chart couldn&apos;t be read. Your teacher can fix it in the editor.</p>
         )}
+
+        <SongGlance view={view} beatsPerBar={song.beatsPerBar} bpm={song.bpm} open={glanceOpen} onToggle={setGlanceOpen} />
 
         <h2 className={styles.chartTitle}>Chart</h2>
         {!synced && view.events.length > 0 && (
