@@ -1,0 +1,23 @@
+# Temporary test: can a GitHub-hosted runner fetch YouTube audio?
+# Audio is piped to /dev/null and never saved.
+name: yt-host-test
+on:
+  push:
+    branches: [claude/project-thread-r6upoh]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          curl -sSL -o yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux && chmod +x yt-dlp
+          ./yt-dlp --version
+          curl -s https://ipinfo.io/org || true
+          echo
+          for id in V39qPqyyB2A dQw4w9WgXcQ; do
+            echo "=== $id: metadata"
+            if ./yt-dlp --simulate -f bestaudio --print "%(title)s | %(format_id)s %(abr)skbps" "https://www.youtube.com/watch?v=$id"; then
+              echo "=== $id: stream (first 2 MB to /dev/null)"
+              ./yt-dlp -q -f bestaudio -o - "https://www.youtube.com/watch?v=$id" | head -c 2000000 | wc -c
+            fi
+          done
