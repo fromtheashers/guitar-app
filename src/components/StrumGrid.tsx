@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { countLabels, slotsPerBeat, strokesForMode, type Stroke, type StrumPattern } from "@/lib/music/strum";
 import styles from "./StrumGrid.module.css";
 
-type Lane = "kick" | "snare" | "hat";
+export type Lane = "kick" | "snare" | "hat";
 
 interface Props {
   pattern: StrumPattern;
@@ -15,6 +15,10 @@ interface Props {
   /** Teacher editing: lets drum panes and strokes be toggled. */
   onChange?: (pattern: StrumPattern) => void;
   showDrums?: boolean;
+  /** Which drum rows to show (all three when left out). */
+  lanes?: Lane[];
+  /** Bass reads the kick drum instead of a strum row. */
+  showStrum?: boolean;
 }
 
 const LANES: { id: Lane; label: string }[] = [
@@ -56,7 +60,7 @@ const NEXT_STROKE: Record<Stroke, Stroke> = { D: "U", U: "x", x: "-", "-": "D" }
 const nextLevel = (v: number) => (v >= 0.75 ? 0.4 : v > 0 ? 0 : 1);
 
 /** One bar of strumming on a grid of leaded panes, with the drum groove it came from above it. */
-export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, showDrums = true }: Props) {
+export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, showDrums = true, lanes, showStrum = true }: Props) {
   const steps = pattern.groove.steps;
   const { strokes, accents } = strokesForMode(pattern, beatsPerBar, mode);
   const labels = countLabels(steps, beatsPerBar);
@@ -115,7 +119,7 @@ export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, s
 
   return (
     <div className={styles.grid} style={{ ["--steps" as string]: steps }} data-editable={editable || undefined}>
-      <p className="visually-hidden">Strum pattern: {words.join(", ") || "one strum, let it ring"}.</p>
+      {showStrum && <p className="visually-hidden">Strum pattern: {words.join(", ") || "one strum, let it ring"}.</p>}
       <div className={styles.row} aria-hidden="true">
         <span className={styles.lane} />
         {labels.map((l, i) => (
@@ -125,7 +129,7 @@ export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, s
         ))}
       </div>
       {showDrums &&
-        LANES.map((lane) => (
+        LANES.filter((lane) => !lanes || lanes.includes(lane.id)).map((lane) => (
           <div key={lane.id} className={styles.row}>
             <span className={styles.lane}>{lane.label}</span>
             {pattern.groove[lane.id].map((v, i) => {
@@ -147,29 +151,31 @@ export function StrumGrid({ pattern, beatsPerBar, mode, active = -1, onChange, s
             })}
           </div>
         ))}
-      <div className={`${styles.row} ${styles.strokes}`}>
-        <span className={styles.lane}>Strum</span>
-        {strokes.map((s, i) =>
-          editable ? (
-            <button
-              key={i}
-              type="button"
-              className={styles.stroke}
-              data-stroke={s}
-              data-accent={accents[i] || undefined}
-              data-active={i === active || undefined}
-              aria-label={`${labels[i] || "step " + (i + 1)}: ${STROKE_NAME[s]}${accents[i] ? ", accented" : ""}. Click to change; press and hold, or right-click, to accent.`}
-              {...holdToAccent(i)}
-            >
-              <Arrow stroke={s} accent={accents[i]} />
-            </button>
-          ) : (
-            <span key={i} className={styles.stroke} data-stroke={s} data-accent={accents[i] || undefined} data-active={i === active || undefined} aria-hidden="true">
-              <Arrow stroke={s} accent={accents[i]} />
-            </span>
-          ),
-        )}
-      </div>
+      {showStrum && (
+        <div className={`${styles.row} ${styles.strokes}`}>
+          <span className={styles.lane}>Strum</span>
+          {strokes.map((s, i) =>
+            editable ? (
+              <button
+                key={i}
+                type="button"
+                className={styles.stroke}
+                data-stroke={s}
+                data-accent={accents[i] || undefined}
+                data-active={i === active || undefined}
+                aria-label={`${labels[i] || "step " + (i + 1)}: ${STROKE_NAME[s]}${accents[i] ? ", accented" : ""}. Click to change; press and hold, or right-click, to accent.`}
+                {...holdToAccent(i)}
+              >
+                <Arrow stroke={s} accent={accents[i]} />
+              </button>
+            ) : (
+              <span key={i} className={styles.stroke} data-stroke={s} data-accent={accents[i] || undefined} data-active={i === active || undefined} aria-hidden="true">
+                <Arrow stroke={s} accent={accents[i]} />
+              </span>
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 }

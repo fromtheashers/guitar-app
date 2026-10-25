@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Song } from "@/lib/db";
 import { parseKey } from "@/lib/music/chords";
+import { getInstrument, INSTRUMENTS, type InstrumentId } from "@/lib/music/instruments";
 import { buildView, eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS, type Mode } from "@/lib/songView";
 import { sectionHue } from "@/lib/sections";
 import { youtubeId } from "@/lib/youtube";
@@ -79,11 +80,13 @@ function useIdle(rolling: boolean) {
   return idle && !rolling;
 }
 
-export function PracticeView({ song, initialKey }: { song: Song; initialKey?: string }) {
+export function PracticeView({ song, initialKey, initialInstrument }: { song: Song; initialKey?: string; initialInstrument?: string }) {
   const [mode, setMode] = usePref<Mode>("pref:mode", "easy");
   const [numbers, setNumbers] = usePref<boolean>("pref:numbers", false);
   const [follow, setFollow] = usePref<boolean>("pref:follow", true);
   const [glanceOpen, setGlanceOpen] = usePref<boolean>("pref:glance", true);
+  const [instrumentId, setInstrumentId] = usePref<InstrumentId>("pref:instrument", "guitar");
+  const inst = getInstrument(instrumentId);
   const [key, setKey] = useState(initialKey && parseKey(initialKey) ? initialKey : song.originalKey);
   const [capo, setCapo] = useState<number | "auto">("auto");
   const [rate, setRate] = useState(1);
@@ -91,6 +94,10 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const [loop, setLoop] = useState<{ section: number; a: number; b: number } | null>(null);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  // A link with ?instrument=ukulele sets it, and this device remembers it.
+  useEffect(() => {
+    if (initialInstrument && INSTRUMENTS.some((i) => i.id === initialInstrument)) setInstrumentId(initialInstrument as InstrumentId);
+  }, [initialInstrument, setInstrumentId]);
   const pageRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<HTMLElement>(null);
@@ -106,8 +113,8 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const idle = useIdle(rolling);
   useWakeLock(!idle);
 
-  const view = useMemo(() => buildView(song, { mode, key, capo, numbers }), [song, mode, key, capo, numbers]);
-  const autoCapo = useMemo(() => buildView(song, { mode, key, capo: "auto", numbers: false }).capo, [song, mode, key]);
+  const view = useMemo(() => buildView(song, { mode, key, capo, numbers, instrument: inst.id }), [song, mode, key, capo, numbers, inst.id]);
+  const autoCapo = useMemo(() => buildView(song, { mode, key, capo: "auto", numbers: false, instrument: inst.id }).capo, [song, mode, key, inst.id]);
   const synced = view.events.some((e) => e.time !== null);
 
   // In another key, the song's audio follows: shifted on this device, video muted.
@@ -284,9 +291,11 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const keys = minor ? ALL_MINOR_KEYS : ALL_KEYS;
   const easy = mode === "easy";
   const pct = (t: number) => `${Math.min(100, Math.max(0, (t / length) * 100))}%`;
+  const bass = inst.role === "bass";
   const settingsSummary = [
+    inst.name,
     `Key ${key}`,
-    view.capo > 0 ? `Capo ${view.capo}` : "No capo",
+    !inst.capo ? null : view.capo > 0 ? `Capo ${view.capo}` : "No capo",
     numbers ? "Numbers" : null,
     rate !== 1 ? `${Math.round(rate * 100)}% speed` : null,
   ]
@@ -318,6 +327,16 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
           </button>
           <div id="song-settings" className={styles.more} data-open={more || undefined}>
             <label className={styles.inline}>
+              <span>Instrument</span>
+              <select className="select" value={inst.id} onChange={(e) => setInstrumentId(e.target.value as InstrumentId)}>
+                {INSTRUMENTS.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.inline}>
               <span>Key</span>
               <select className="select" value={key} onChange={(e) => setKey(e.target.value)}>
                 {keys.map((k) => (
@@ -328,17 +347,19 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
                 ))}
               </select>
             </label>
-            <label className={styles.inline}>
-              <span>Capo</span>
-              <select className="select" value={String(capo)} onChange={(e) => setCapo(e.target.value === "auto" ? "auto" : Number(e.target.value))}>
-                <option value="auto">Best ({autoCapo === 0 ? "none" : autoCapo})</option>
-                {Array.from({ length: 8 }, (_, i) => (
-                  <option key={i} value={i}>
-                    {i === 0 ? "No capo" : `Fret ${i}`}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {inst.capo && (
+              <label className={styles.inline}>
+                <span>Capo</span>
+                <select className="select" value={String(capo)} onChange={(e) => setCapo(e.target.value === "auto" ? "auto" : Number(e.target.value))}>
+                  <option value="auto">Best ({autoCapo === 0 ? "none" : autoCapo})</option>
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <option key={i} value={i}>
+                      {i === 0 ? "No capo" : `Fret ${i}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="segmented" role="group" aria-label="Show chords as">
               <button type="button" aria-pressed={!numbers} onClick={() => setNumbers(false)}>Chords</button>
               <button type="button" aria-pressed={numbers} onClick={() => setNumbers(true)}>Numbers</button>
@@ -356,7 +377,10 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
           </div>
         </div>
         <p className={styles.capoLine}>
-          {view.capo > 0 ? (
+          {inst.id !== "guitar" && <>{inst.name}, tuned {inst.strings.join(" ")}. </>}
+          {bass ? (
+            <>Play the bass note of each chord. Playing in {view.soundingKey}.</>
+          ) : view.capo > 0 ? (
             <>
               <strong>Capo on fret {view.capo}.</strong> Play {view.shapeKey} shapes; it sounds in {view.soundingKey}.
             </>
@@ -401,10 +425,10 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
 
         {view.shapes.length > 0 && (
           <section className={styles.shapes} aria-labelledby="shapes-title">
-            <h2 id="shapes-title">Chords in this song</h2>
+            <h2 id="shapes-title">{bass ? "Bass notes in this song" : inst.id === "guitar" ? "Chords in this song" : `${inst.name} chords in this song`}</h2>
             <div className={styles.shapeRow}>
               {view.shapes.map((s) => (
-                <ChordDiagram key={s} chord={s} easy={easy} size="m" active={nowEvent?.shape === s} />
+                <ChordDiagram key={s} chord={s} easy={easy} size="m" active={nowEvent?.shape === s} instrument={inst} />
               ))}
             </div>
           </section>
@@ -432,23 +456,29 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
               </span>
               <span className={styles.nowName}>{shown.label}</span>
             </div>
-            {shown.shape && <ChordDiagram chord={shown.shape} easy={easy} size={docked ? "s" : "m"} active={playing} caption={false} />}
+            {shown.shape && <ChordDiagram chord={shown.shape} easy={easy} size={docked ? "s" : "m"} active={playing} caption={false} instrument={inst} />}
             <div className={styles.next}>
               <div className={styles.nextText}>
                 <span className={styles.nextLabel}>Next</span>
                 <span className={styles.nextName}>{nextEvent?.label ?? "–"}</span>
               </div>
-              {nextEvent?.shape && <ChordDiagram chord={nextEvent.shape} easy={easy} size="s" caption={false} />}
+              {nextEvent?.shape && <ChordDiagram chord={nextEvent.shape} easy={easy} size="s" caption={false} instrument={inst} />}
             </div>
           </div>
         )}
         {section && (
           <div className={styles.strum}>
             <div className={styles.strumHead}>
-              <span>Strum</span>
-              <span className="muted">{section.pattern.sparse ? "One strum, let it ring" : section.pattern.name}</span>
+              <span>{bass ? "Rhythm" : "Strum"}</span>
+              <span className="muted">
+                {bass ? "Play the note with the kick drum" : section.pattern.sparse ? "One strum, let it ring" : section.pattern.name}
+              </span>
             </div>
-            <StrumGrid pattern={section.pattern} beatsPerBar={song.beatsPerBar} mode={mode} active={playing ? position.step : -1} showDrums={!docked} />
+            {bass ? (
+              <StrumGrid pattern={section.pattern} beatsPerBar={song.beatsPerBar} mode={mode} active={playing ? position.step : -1} lanes={["kick"]} showStrum={false} />
+            ) : (
+              <StrumGrid pattern={section.pattern} beatsPerBar={song.beatsPerBar} mode={mode} active={playing ? position.step : -1} showDrums={!docked} />
+            )}
           </div>
         )}
         {videoId && (

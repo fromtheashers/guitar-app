@@ -15,7 +15,7 @@ const ui = Schibsted_Grotesk({
 
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: "Practise worship songs on guitar: chords in time with the video, easy or advanced, in any key.",
+  description: "Practise worship songs on guitar, ukulele, mandolin or bass: chords in time with the video, easy or advanced, in any key.",
   robots: { index: false, follow: false },
 };
 

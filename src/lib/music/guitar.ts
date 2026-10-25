@@ -1,10 +1,10 @@
-// Guitar-specific knowledge: chord shapes for diagrams, how hard each shape is,
-// and which capo position makes a song easiest.
+// Guitar chord shapes for diagrams: hand-picked open and worship voicings, then
+// movable E and A barre shapes. Other instruments live in instruments.ts.
 
-import { Chord, chordTones, formatChord, mod12, parseChord, qualityFamily, simplifyChord, transposeChord } from "./chords";
+import { formatChord, mod12, parseChord, qualityFamily } from "./chords";
 
-/** Fret per string, low E to high E. -1 = muted, 0 = open. */
-export type Frets = [number, number, number, number, number, number];
+/** Fret per string, in diagram order (lowest string on the left). -1 = muted, 0 = open. */
+export type Frets = number[];
 
 export interface Shape {
   frets: Frets;
@@ -83,8 +83,8 @@ function nearestQuality(quality: string): string {
   return fam === "minor" ? "m" : "";
 }
 
-/** Shapes for a chord symbol, best first. Always returns at least one shape. */
-export function shapesFor(symbol: string): Shape[] {
+/** Guitar shapes for a chord symbol, best first. Always returns at least one shape. */
+export function guitarShapes(symbol: string): Shape[] {
   const chord = parseChord(symbol);
   if (!chord) return [];
   const key = formatChord(chord, false);
@@ -92,7 +92,7 @@ export function shapesFor(symbol: string): Shape[] {
 
   // Slash chords without an open voicing: play the chord, mention the bass.
   if (chord.bass !== undefined) {
-    const base = shapesFor(formatChord({ root: chord.root, quality: chord.quality }, false));
+    const base = guitarShapes(formatChord({ root: chord.root, quality: chord.quality }, false));
     return base.map((s) => ({ ...s, note: "bass note optional" }));
   }
 
@@ -109,44 +109,4 @@ export function shapesFor(symbol: string): Shape[] {
   out.push(...options);
   if (q !== chord.quality && out.length) out[0] = { ...out[0], note: `played as ${formatChord({ root: chord.root, quality: q }, false)}` };
   return out;
-}
-
-/** 0 = beginner-friendly open chord, higher = harder. */
-export function difficulty(symbol: string): number {
-  const shapes = shapesFor(symbol);
-  if (!shapes.length) return 3;
-  const s = shapes[0];
-  if (!s.barre) return 0;
-  return shapes.some((x) => !x.barre) ? 1 : s.barre <= 3 ? 2 : 3;
-}
-
-export interface CapoChoice {
-  capo: number;
-  /** Semitones from the sounding key to the key of the shapes the student plays. */
-  shapeShift: number;
-  cost: number;
-}
-
-/**
- * For chords that should sound in some key, find the capo that lets the student
- * play the easiest shapes. `easy` simplifies chords first (as easy mode does).
- */
-export function bestCapo(soundingChords: Chord[], easy: boolean, maxCapo = 7): CapoChoice {
-  let best: CapoChoice = { capo: 0, shapeShift: 0, cost: Infinity };
-  for (let capo = 0; capo <= maxCapo; capo++) {
-    let cost = capo * 0.15;
-    for (const c of soundingChords) {
-      const shape = transposeChord(easy ? simplifyChord(c) : c, -capo);
-      cost += difficulty(formatChord(shape, false));
-    }
-    if (cost < best.cost - 1e-9) best = { capo, shapeShift: -capo, cost };
-  }
-  return best;
-}
-
-/** True if every note in the shape belongs to the chord; used by tests to check the table. */
-export function shapeMatchesChord(shape: Shape, chord: Chord): boolean {
-  const open = [4, 9, 2, 7, 11, 4];
-  const tones = new Set(chordTones(chord));
-  return shape.frets.every((f, s) => f < 0 || tones.has(mod12(open[s] + f)));
 }

@@ -1,10 +1,10 @@
 // Builds what a student sees from a stored song and their chosen options:
 // chords transposed to the band's key, moved under a capo, simplified in easy mode,
-// or written as Nashville numbers.
+// or written as Nashville numbers. The capo is chosen for the student's instrument.
 
 import { Chord, formatChord, Key, keyName, mod12, nashville, parseChord, parseKey, prefersFlats, simplifyChord, transposeChord, transposeKey } from "./music/chords";
 import { ChartSection, parseChart } from "./music/chart";
-import { bestCapo } from "./music/guitar";
+import { bestCapo, getInstrument, type InstrumentId } from "./music/instruments";
 import { defaultPresetFor, presetPattern, StrumPattern } from "./music/strum";
 
 export type Mode = "easy" | "advanced";
@@ -16,6 +16,8 @@ export interface ViewOptions {
   /** Capo fret, or "auto" to pick the easiest. */
   capo: number | "auto";
   numbers: boolean;
+  /** What the student plays; guitar when left out. */
+  instrument?: InstrumentId;
 }
 
 export interface ViewEvent {
@@ -79,7 +81,8 @@ export function buildView(song: SongLike, opts: ViewOptions): SongView {
     const c = parseChord(e.chord);
     if (c) soundingChords.set(e.chord, transposeChord(c, shift));
   }
-  const capo = opts.capo === "auto" ? bestCapo([...soundingChords.values()], opts.mode === "easy").capo : opts.capo;
+  const inst = getInstrument(opts.instrument);
+  const capo = !inst.capo ? 0 : opts.capo === "auto" ? bestCapo([...soundingChords.values()], opts.mode === "easy", inst).capo : opts.capo;
   const shapeKey = transposeKey(sounding, -capo);
   const flats = prefersFlats(shapeKey);
 

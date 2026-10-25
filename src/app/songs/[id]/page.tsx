@@ -7,7 +7,7 @@ import { isEditor } from "@/lib/auth";
 import { getSong, type Song } from "@/lib/db";
 import styles from "./page.module.css";
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ key?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ key?: string; instrument?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function SongPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { key } = await searchParams;
+  const { key, instrument } = await searchParams;
   let song: Song | null;
   try {
     song = await getSong(id);
@@ -42,7 +42,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           </Link>
         )}
       </div>
-      <PracticeView song={song} initialKey={key} />
+      <PracticeView song={song} initialKey={key} initialInstrument={instrument} />
     </div>
   );
 }

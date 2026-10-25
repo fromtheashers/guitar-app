@@ -9,7 +9,7 @@
 - Conventions: read AGENTS.md (Next 16 differs from older versions: async params/cookies, `connection()`, Suspense for runtime data). Server pages wrap DB calls in try/catch → `<DbNotice>`, then call `notFound()` outside the try. No functions passed from server to client components. Design rules in DESIGN.md and PRODUCT.md.
 
 ## Structure
-- `src/lib/music/`: pure music theory: chord parsing/transposition, chart text format, guitar shapes and capo choice, strum patterns from drum grooves.
+- `src/lib/music/`: pure music theory: chord parsing/transposition, chart text format, instruments (guitar, ukulele, baritone ukulele, mandolin, bass) with chord shapes and capo choice, strum patterns from drum grooves.
 - `src/lib/analysis/`: in-browser audio analysis (DSP, features, beat tracking, harmony, whole-song analyser) and tab-audio capture.
 - `src/lib/`: server helpers (db, auth, validation, http) and client view-model (`songView.ts`).
 - `src/components/`: client UI (practice view, chart, strum grid, chord diagrams, editors, YouTube hook).
@@ -34,10 +34,12 @@ Purpose: chord and key model. Exports: parseChord, formatChord, transposeChord, 
 ### chart.ts
 Purpose: chart text format (sections `[X]`, bars `| |`, `.` hold, `%` repeat, `N.C.`, `> cue`, inline ChordPro). Exports: parseChart(text, beatsPerBar) → {sections, events, errors}; serializeChart; sectionKind; distinctChords. Timings are indexed by chord-change event.
 ### guitar.ts
-Purpose: chord shapes (open/worship voicings, E/A barre templates) and difficulty. Exports: shapesFor, difficulty, bestCapo(chords, easy), shapeMatchesChord.
+Purpose: guitar chord shapes (open/worship voicings, E/A barre templates). Exports: guitarShapes, types Shape, Frets (number[], diagram order).
+### instruments.ts
+Purpose: per-instrument shapes, difficulty and capo. INSTRUMENTS (guitar, ukulele GCEA re-entrant, baritone DGBE, mandolin GDAE, bass EADG with role "bass" and no capo), GUITAR, getInstrument(id). shapesFor(symbol, inst) (memoised; guitar → guitarShapes; ukulele/mandolin hand table then searchShapes, a scored fretboard search over four-fret windows; slash bass dropped on 4-string chord instruments; bass → one dot on the bass note), difficulty(symbol, inst), bestCapo(chords, easy, inst) (no capo for bass), shapeMatchesChord(shape, chord, inst).
 ### strum.ts
 Purpose: DrumGroove → StrumPattern (D/U/x/-, accents). Exports: strokesFromGroove, patternFromGroove, strokesForMode (easy = downs on kick/snare beats), GROOVE_PRESETS, presetPattern, defaultPresetFor, countLabels, slotsPerBeat.
-### music.test.ts — unit tests for the above.
+### music.test.ts — unit tests for the above (every chord on every non-guitar instrument uses only chord tones).
 
 ## src/lib/analysis
 ### dsp.ts — fft, hann, resample, stft, percentile, mean.
@@ -65,7 +67,7 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### validate.ts — songInput, setlistInput (sanitise request bodies).
 ### http.ts — json, problem, requireEditor, readJson, dbError for API routes.
 ### glance.ts — glance(view) → sections of folded four-bar lines (glanceLines, foldLines: one line or a two-line phrase repeated back to back); glanceChords. Tests in glance.test.ts.
-### songView.ts — buildView(song, {mode, key, capo, numbers}) → SongView (sections with patterns and times, events, shapes, capo, keys); eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS.
+### songView.ts — buildView(song, {mode, key, capo, numbers, instrument?}) → SongView (sections with patterns and times, events, shapes, capo, keys); eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS.
 ### videoInfo.ts — pure: guessSong(VideoFacts) → SongGuess {title, artist, spotifyUrl, key, bpm, beatsPerBar} from title/channel/description/Music card; cleanTitle, embeddedJson, musicSection. Tests in videoInfo.test.ts.
 ### ytAudio.ts — server-only streamAudio(id, format, signal) → ReadableStream from yt-dlp (YTDLP_PATH or ./bin/yt-dlp, installed by scripts/install-yt-dlp.sh at Render build); explain(stderr) → readable error. 15-min/60 MB caps.
 ### helperQueue.ts — server-only in-memory job queue for the home helper: helperConfigured, helperOnline (polled <45 s ago), helperCanListen (online and version ≥ 2), checkHelperToken, fetchViaHelper(id, format m4a|webm|listen), nextJob(signal, version) (25 s long poll), finishJob.
@@ -73,11 +75,11 @@ Purpose: getDisplayMedia tab-audio capture via AudioWorklet, in memory only. Exp
 ### sections.ts (sectionHue), youtube.ts (youtubeId), brand.ts (APP_NAME placeholder), share.ts (shareLink: share sheet, else copy link).
 
 ## src/components
-### PracticeView.tsx — student practice screen. Left column: video, Easy/Advanced plus settings (key, capo, numbers, speed; folded behind one summary button at ≤960px), capo line, SongGlance (open state saved as pref:glance), chart (ChartView with beat ticks), chord shapes, notes. Player pane (sticky right on laptops, docked to the bottom at ≤960px, height fed to --dock): section, current chord + diagram, next chord, StrumGrid (strum row only when docked), progress bar with section marks (range input scrub), transport (Play/Pause, Stop, ±5 s, Auto-scroll checkbox saved as pref:follow). Tapping a bar or looping starts one bar early; arrows move time even when paused; screen wake lock (useWakeLock) until ten idle minutes. In a non-original key, useShiftedAudio plays shifted audio and ShiftNote in the capo line shows progress / "Audio in X" / tap-to-hear / "Audio stays in …" with the reason.
+### PracticeView.tsx — student practice screen. Left column: video, Easy/Advanced plus settings (instrument saved as pref:instrument, also set by ?instrument= on the song URL; key, capo (hidden for bass), numbers, speed; folded behind one summary button at ≤960px), capo line, SongGlance (open state saved as pref:glance), chart (ChartView with beat ticks), chord shapes, notes. Player pane (sticky right on laptops, docked to the bottom at ≤960px, height fed to --dock): section, current chord + diagram, next chord, StrumGrid (strum row only when docked), progress bar with section marks (range input scrub), transport (Play/Pause, Stop, ±5 s, Auto-scroll checkbox saved as pref:follow). Tapping a bar or looping starts one bar early; arrows move time even when paused; screen wake lock (useWakeLock) until ten idle minutes. In a non-original key, useShiftedAudio plays shifted audio and ShiftNote in the capo line shows progress / "Audio in X" / tap-to-hear / "Audio stays in …" with the reason.
 ### SongGlance.tsx — "Song at a glance": static card of the whole song (glance.ts), sections tinted by hue, repeats as ×N, held bars as "–", chord list; Hide/Show.
 ### ChartView.tsx — chart as leaded panes per section; props view, beatsPerBar, activeEvent, onSeek, onLoopSection, loopedSection; onPick + picked (editor) make each chord a button (untimed ones dimmed). activeBeat draws beat ticks along the foot of the active bar.
-### StrumGrid.tsx — drum rows + strum row; editable when onChange given (tap cycles a strum; press-and-hold 450 ms or right-click accents).
-### ChordDiagram.tsx — SVG chord box (pickShape), sizes s/m/l; caption={false} hides the name visually.
+### StrumGrid.tsx — drum rows + strum row (lanes / showStrum props: bass shows only the kick row, "Rhythm"); editable when onChange given (tap cycles a strum; press-and-hold 450 ms or right-click accents).
+### ChordDiagram.tsx — SVG chord box (pickShape(chord, easy, instrument)), any string count (4-string boxes use wider gaps), bass draws no × marks; sizes s/m/l; caption={false} hides the name visually.
 ### SongEditor.tsx — teacher song editor: YouTube link first, details (title, artist, Spotify, key, time, BPM) folded in a <details> with a summary line, unsaved draft kept in localStorage `song-draft:<id|new>` with a restore banner, Share button, video, AnalysePanel, tap-to-sync (from the start, or from any chord picked in the preview; Back one = Backspace replays from a run-up), sticky sync bar over the preview (picked chord: tap from here, set to video time, ±0.1 s for that chord, ±1 beat for it and all later), chart text sticky on laptops, ChartKeys while the chart is focused, per-section patterns, notes, save (Ctrl+S)/delete. At ≤900px: Save bar fixed to the bottom; while tapping, a fixed tap pad (next/then chord, big tap on pointerdown, Back one, Done) replaces it and the video scrolls to the top.
 ### ChartKeys.tsx — touch-only (pointer: coarse) toolbar fixed above the on-screen keyboard (visualViewport inset): | . chords in the key (keyChords) + chords used, section and cue inserts; keeps textarea focus.
 ### AnalysePanel.tsx — "Draft from YouTube" (plus mic/tab backups) → chord model → analyzeAudio, with progress, summary and undo. Holds a screen wake lock while fetching/listening/working.

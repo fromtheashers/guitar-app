@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatChord, nashville, parseChord, parseKey, simplifyChord, transposeChord } from "./chords";
 import { parseChart, serializeChart } from "./chart";
-import { bestCapo, shapeMatchesChord, shapesFor } from "./guitar";
+import { bestCapo, getInstrument, INSTRUMENTS, shapeMatchesChord, shapesFor } from "./instruments";
 import { presetPattern, strokesForMode } from "./strum";
 
 const chord = (s: string) => parseChord(s)!;
@@ -79,6 +79,55 @@ describe("guitar", () => {
 
   it("needs no capo for a song in G", () => {
     expect(bestCapo(["G", "C", "Em", "D"].map(chord), true).capo).toBe(0);
+  });
+});
+
+describe("other instruments", () => {
+  const roots = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+  const qualities = ["", "m", "7", "m7", "maj7", "sus4", "sus2", "add9", "dim", "6", "9"];
+
+  it("has a playable shape made of chord tones for every chord on each non-guitar instrument", () => {
+    for (const inst of INSTRUMENTS.filter((i) => i.id !== "guitar")) {
+      for (const r of roots) {
+        for (const q of qualities) {
+          const shapes = shapesFor(r + q, inst);
+          expect(shapes.length, `${inst.id} ${r}${q}`).toBeGreaterThan(0);
+          for (const s of shapes) {
+            expect(s.frets.length).toBe(inst.tuning.length);
+            expect(shapeMatchesChord(s, chord(r + q), inst), `${inst.id} ${r}${q} ${s.frets}`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("uses the standard ukulele shapes", () => {
+    const uke = getInstrument("ukulele");
+    expect(shapesFor("C", uke)[0].frets).toEqual([0, 0, 0, 3]);
+    expect(shapesFor("G", uke)[0].frets).toEqual([0, 2, 3, 2]);
+    expect(shapesFor("Bb", uke)[0]).toEqual({ frets: [3, 2, 1, 1], barre: 1 });
+    expect(shapesFor("D/F#", uke)[0].frets).toEqual([2, 2, 2, 0]);
+  });
+
+  it("finds the usual baritone shapes, which match the guitar's top four strings", () => {
+    const bari = getInstrument("baritone");
+    expect(shapesFor("G", bari)[0].frets).toEqual([0, 0, 0, 3]);
+    expect(shapesFor("D", bari)[0].frets).toEqual([0, 2, 3, 2]);
+    expect(shapesFor("Am", bari)[0].frets).toEqual([2, 2, 1, 0]);
+  });
+
+  it("puts a song in G on ukulele without a capo, and suggests one in Bb", () => {
+    const uke = getInstrument("ukulele");
+    expect(bestCapo(["G", "C", "Em", "D"].map(chord), true, uke).capo).toBe(0);
+    expect(bestCapo(["Bb", "Eb", "Gm", "F"].map(chord), true, uke).capo).toBeGreaterThan(0);
+  });
+
+  it("plays the bass note on bass, and never suggests a capo", () => {
+    const bass = getInstrument("bass");
+    expect(shapesFor("G", bass)[0].frets).toEqual([3, -1, -1, -1]);
+    expect(shapesFor("D", bass)[0].frets).toEqual([-1, -1, 0, -1]);
+    expect(shapesFor("D/F#", bass)[0].frets).toEqual([2, -1, -1, -1]);
+    expect(bestCapo(["Bb", "Eb"].map(chord), true, bass).capo).toBe(0);
   });
 });
 
