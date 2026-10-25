@@ -6,10 +6,13 @@ import { timingSafeEqual } from "node:crypto";
 // over a home connection that YouTube doesn't block, and posts it back. Audio lives
 // only in memory, only until it's passed on to the browser that asked for it.
 
+/** "listen" is plain, small audio for a student to play back: never separated. */
+export type HelperFormat = "m4a" | "webm" | "listen";
+
 export interface HelperJob {
   id: string;
   videoId: string;
-  format: "m4a" | "webm";
+  format: HelperFormat;
 }
 
 export interface HelperAudio {
@@ -28,8 +31,12 @@ const POLL_MS = 25_000;
 // Long enough for a 15-minute song to be separated on a processor.
 const JOB_MS = 6 * 60_000;
 
+// Helpers from before version 2 don't know "listen" jobs and would separate them.
+const LISTEN_VERSION = 2;
+
 const state = ((globalThis as unknown as { helperQueue?: State }).helperQueue ??= {
   lastSeen: 0,
+  version: 0,
   queue: [],
   running: new Map(),
   pollers: [],
@@ -37,6 +44,7 @@ const state = ((globalThis as unknown as { helperQueue?: State }).helperQueue ??
 
 interface State {
   lastSeen: number;
+  version: number;
   queue: Pending[];
   running: Map<string, Pending>;
   pollers: ((job: HelperJob | null) => void)[];
@@ -50,6 +58,11 @@ export function helperOnline(): boolean {
   return Date.now() - state.lastSeen < ONLINE_MS;
 }
 
+/** Online and new enough to fetch plain audio for students. */
+export function helperCanListen(): boolean {
+  return helperConfigured() && helperOnline() && state.version >= LISTEN_VERSION;
+}
+
 export function checkHelperToken(header: string | null): boolean {
   const token = process.env.HELPER_TOKEN;
   if (!token || !header?.startsWith("Bearer ")) return false;
@@ -59,7 +72,7 @@ export function checkHelperToken(header: string | null): boolean {
 }
 
 /** Ask the helper for a video's audio. Rejects with yt-dlp's error output on failure. */
-export function fetchViaHelper(videoId: string, format: "m4a" | "webm", signal: AbortSignal): Promise<HelperAudio> {
+export function fetchViaHelper(videoId: string, format: HelperFormat, signal: AbortSignal): Promise<HelperAudio> {
   return new Promise((resolve, reject) => {
     const job: Pending = {
       id: crypto.randomUUID(),
@@ -93,8 +106,9 @@ export class HelperError extends Error {
 }
 
 /** Long poll from the helper: the next job, or null after a quiet spell. */
-export function nextJob(signal: AbortSignal): Promise<HelperJob | null> {
+export function nextJob(signal: AbortSignal, version = 1): Promise<HelperJob | null> {
   state.lastSeen = Date.now();
+  state.version = version;
   const job = state.queue.shift();
   if (job) {
     state.running.set(job.id, job);

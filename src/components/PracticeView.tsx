@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Song } from "@/lib/db";
 import { parseKey } from "@/lib/music/chords";
-import { buildView, eventAt, ALL_KEYS, ALL_MINOR_KEYS, type Mode } from "@/lib/songView";
+import { buildView, eventAt, keyDistance, ALL_KEYS, ALL_MINOR_KEYS, type Mode } from "@/lib/songView";
 import { sectionHue } from "@/lib/sections";
 import { youtubeId } from "@/lib/youtube";
 import { ChartView } from "./ChartView";
 import { ChordDiagram } from "./ChordDiagram";
 import { SongGlance } from "./SongGlance";
 import { StrumGrid } from "./StrumGrid";
+import { useShiftedAudio, type ShiftStatus } from "./useShiftedAudio";
 import { BUFFERING, PLAYING, useYouTube } from "./useYouTube";
 import { useWakeLock } from "./useWakeLock";
 import styles from "./PracticeView.module.css";
@@ -108,6 +109,12 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
   const view = useMemo(() => buildView(song, { mode, key, capo, numbers }), [song, mode, key, capo, numbers]);
   const autoCapo = useMemo(() => buildView(song, { mode, key, capo: "auto", numbers: false }).capo, [song, mode, key]);
   const synced = view.events.some((e) => e.time !== null);
+
+  // In another key, the song's audio follows: shifted on this device, video muted.
+  const original = parseKey(song.originalKey);
+  const chosen = parseKey(key);
+  const semitones = videoId && original && chosen ? keyDistance(original, chosen) : 0;
+  const shiftStatus = useShiftedAudio({ songId: song.id, semitones, rate, player });
   const barLength = song.bpm > 0 ? (60 / song.bpm) * song.beatsPerBar : 2;
 
   // Follow the video.
@@ -357,6 +364,7 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
             <>No capo. Playing in {view.soundingKey}.</>
           )}
           {song.bpm > 0 && <> · {song.bpm} BPM</>}
+          <ShiftNote status={shiftStatus} soundingKey={view.soundingKey} originalKey={song.originalKey} />
           {song.spotifyUrl && (
             <>
               {" · "}
@@ -499,6 +507,26 @@ export function PracticeView({ song, initialKey }: { song: Song; initialKey?: st
         )}
       </aside>
     </div>
+  );
+}
+
+function ShiftNote({ status, soundingKey, originalKey }: { status: ShiftStatus; soundingKey: string; originalKey: string }) {
+  if (status.kind === "off") return null;
+  const text =
+    status.kind === "loading"
+      ? `Getting the audio to play it in ${soundingKey}…`
+      : status.kind === "shifting"
+        ? `Moving the audio to ${soundingKey}… ${Math.round(status.done * 100)}%`
+        : status.kind === "ready"
+          ? status.blocked
+            ? `Tap anywhere on the page to hear it in ${soundingKey}.`
+            : `Audio in ${soundingKey}.`
+          : `Audio stays in ${originalKey}. ${status.reason}`;
+  return (
+    <span className={styles.shiftNote} data-kind={status.kind} role="status">
+      {" · "}
+      {text}
+    </span>
   );
 }
 

@@ -17,5 +17,10 @@ services:
       # Password shared with the YouTube helper on the teacher's home computer.
       - key: HELPER_TOKEN
         sync: false
+      # Google Cloud audio service for playing songs in another key (cloud/audio-service).
+      - key: AUDIO_SERVICE_URL
+        sync: false
+      - key: AUDIO_SERVICE_TOKEN
+        sync: false
       - key: SESSION_SECRET
         generateValue: true

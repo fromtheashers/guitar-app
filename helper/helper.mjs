@@ -33,13 +33,17 @@ const separator = sep.separator;
 const separatorScript = sep.separatorScript ?? path.join(here, "separate.py");
 // Demucs weights live beside the Python environment unless config says otherwise.
 const models = sep.models ?? (separator ? path.resolve(path.dirname(separator), "..", "..", "models") : undefined);
+// "listen" is for a student playing the song in another key: small AAC, never separated.
+const FORMATS = { m4a: "bestaudio[ext=m4a]/bestaudio", webm: "bestaudio[ext=webm]/bestaudio", listen: "139/140/bestaudio[ext=m4a]/bestaudio" };
+// Tells the site which jobs this helper understands.
+const VERSION = 2;
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function download(job) {
   return new Promise((resolve) => {
     const args = [
-      "--format", job.format === "m4a" ? "bestaudio[ext=m4a]/bestaudio" : "bestaudio[ext=webm]/bestaudio",
+      "--format", FORMATS[job.format] ?? FORMATS.webm,
       "--output", "-",
       "--no-playlist", "--no-part", "--no-cache-dir", "--no-progress", "--quiet",
       "--match-filter", "duration < 900",
@@ -110,7 +114,7 @@ log(`Helper started. Waiting for work from ${site}`);
 let backoff = 2000;
 for (;;) {
   try {
-    const res = await fetch(`${site}/api/helper/next`, { headers: auth, signal: AbortSignal.timeout(40_000) });
+    const res = await fetch(`${site}/api/helper/next?v=${VERSION}`, { headers: auth, signal: AbortSignal.timeout(40_000) });
     if (res.status === 401) {
       log("The site rejected the helper password. Check config.json matches HELPER_TOKEN in Render.");
       await wait(60_000);
@@ -130,7 +134,7 @@ for (;;) {
     const job = await res.json();
     log(`Fetching ${job.videoId}…`);
     let result = await download(job);
-    if ("audio" in result) {
+    if ("audio" in result && job.format !== "listen") {
       const stems = await separate(result.audio);
       if (stems) result = { audio: stems, stems: true };
     }

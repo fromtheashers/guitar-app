@@ -99,6 +99,14 @@
   font-weight: 600;
 }
 
+.shiftNote[data-kind="ready"] {
+  color: var(--ok);
+}
+
+.shiftNote[data-kind="failed"] {
+  color: var(--amber);
+}
+
 .chartTitle {
   margin-top: 12px;
 }
