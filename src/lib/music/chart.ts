@@ -232,3 +232,29 @@ export function distinctChords(chart: ParsedChart): string[] {
   for (const e of chart.events) if (e.chord && !seen.has(e.chord)) seen.add(e.chord);
   return [...seen];
 }
+
+/**
+ * Renames section `index` (as parseChart numbers them) in the chart text. With
+ * `everywhere`, every section with the same name is renamed too, so fixing one
+ * chorus fixes them all. Bars before any [name] get a new heading at the top.
+ */
+export function renameSection(text: string, index: number, label: string, everywhere: boolean): string {
+  const name = label.replace(/[[\]]/g, "").trim();
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const headers: { line: number; label: string }[] = [];
+  lines.forEach((raw, i) => {
+    const m = SECTION_RE.exec(raw.trim());
+    if (m && !isChordToken(m[1].trim())) headers.push({ line: i, label: m[1].trim() });
+  });
+  if (!name) return text;
+  const implicit = parseChart(text, 4).sections.length > headers.length;
+  const at = index - (implicit ? 1 : 0);
+  if (at < 0) return `[${name}]\n${text}`;
+  const target = headers[at];
+  if (!target) return text;
+  const same = (l: string) => l.toLowerCase() === target.label.toLowerCase();
+  for (const h of headers) {
+    if (h === target || (everywhere && same(h.label))) lines[h.line] = lines[h.line].replace(/\[[^\]]+\]/, `[${name}]`);
+  }
+  return lines.join("\n");
+}

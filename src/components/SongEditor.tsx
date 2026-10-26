@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { Song, SongInput } from "@/lib/db";
-import { distinctChords, parseChart } from "@/lib/music/chart";
+import { parseLyrics } from "@/lib/analysis/lyrics";
+import { distinctChords, parseChart, renameSection, sectionKind } from "@/lib/music/chart";
 import { defaultPresetFor, GROOVE_PRESETS, presetPattern, type StrumPattern } from "@/lib/music/strum";
 import { ALL_KEYS, ALL_MINOR_KEYS, buildView, eventAt } from "@/lib/songView";
 import type { SongGuess as VideoGuess } from "@/lib/videoInfo";
@@ -29,7 +30,17 @@ const EMPTY: SongInput = {
   timings: [],
   patterns: {},
   notes: "",
+  lyrics: "",
 };
+
+const LYRICS_HELP = `[Verse 1]
+Amazing grace how sweet the sound
+That saved a wretch like me
+
+[Chorus]
+My chains are gone…`;
+
+const SECTION_NAMES = ["Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Tag", "Interlude", "Instrumental", "Outro"];
 
 const CHART_HELP = `[Verse 1]
 > Amazing grace
@@ -38,10 +49,10 @@ const CHART_HELP = `[Verse 1]
 [Chorus]
 | C | D | Em | C |`;
 
-export function SongEditor({ song }: { song?: Song }) {
+export function SongEditor({ song, lyrics = "" }: { song?: Song; lyrics?: string }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<SongInput>(() => (song ? { ...EMPTY, ...song } : EMPTY));
-  const [saved, setSaved] = useState<string>(() => JSON.stringify(song ? { ...EMPTY, ...song } : EMPTY));
+  const [draft, setDraft] = useState<SongInput>(() => (song ? { ...EMPTY, ...song, lyrics } : EMPTY));
+  const [saved, setSaved] = useState<string>(() => JSON.stringify(song ? { ...EMPTY, ...song, lyrics } : EMPTY));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [undo, setUndo] = useState<SongInput | null>(null);
@@ -69,7 +80,8 @@ export function SongEditor({ song }: { song?: Song }) {
     return () => window.clearTimeout(t);
   }, [backup, backupKey, dirty, draft]);
   const restoreBackup = () => {
-    if (backup) setDraft({ ...EMPTY, ...backup.draft });
+    // Copies from before the lyrics box keep the saved lyrics.
+    if (backup) setDraft((d) => ({ ...EMPTY, lyrics: d.lyrics, ...backup.draft }));
     setBackup(null);
   };
   const discardBackup = () => {
@@ -139,6 +151,28 @@ export function SongEditor({ song }: { song?: Song }) {
     [draft],
   );
   const kinds = useMemo(() => [...new Set(chart.sections.map((s) => s.kind))], [chart]);
+  const lyricSections = useMemo(() => parseLyrics(draft.lyrics ?? ""), [draft.lyrics]);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+
+  // Renaming a section from the chart preview, by default with all its repeats.
+  const [renaming, setRenaming] = useState<{ index: number; name: string; all: boolean } | null>(null);
+  const renameTarget = renaming ? chart.sections[renaming.index] : undefined;
+  const repeats = renameTarget ? chart.sections.filter((s) => s.label.toLowerCase() === renameTarget.label.toLowerCase()).length : 0;
+  const applyRename = () => {
+    if (!renaming || !renameTarget || !renaming.name.trim()) return;
+    const text = renameSection(draft.chart, renaming.index, renaming.name, renaming.all);
+    const oldKind = renameTarget.kind;
+    const newKind = sectionKind(renaming.name);
+    setDraft((d) => {
+      const left = parseChart(text, d.beatsPerBar).sections.some((s) => s.kind === oldKind);
+      const patterns = { ...d.patterns };
+      // The strum pattern goes with the section unless the new kind already has one.
+      if (patterns[oldKind] && !patterns[newKind]) patterns[newKind] = patterns[oldKind];
+      if (!left && oldKind !== newKind) delete patterns[oldKind];
+      return { ...d, chart: text, patterns };
+    });
+    setRenaming(null);
+  };
   const timed = draft.timings.slice(0, chart.events.length).filter((t) => typeof t === "number").length;
 
   // Warn before leaving with unsaved changes.
@@ -280,6 +314,7 @@ export function SongEditor({ song }: { song?: Song }) {
   // Picking a chord in the preview: while tapping, carry on from it; otherwise
   // select it and move the video there.
   const pick = (i: number) => {
+    setRenaming(null);
     if (tapIndex !== null) {
       startTapping(i);
       return;
@@ -458,6 +493,31 @@ export function SongEditor({ song }: { song?: Song }) {
             </label>
           </div>
         </details>
+        <details className={styles.details} open={lyricsOpen} onToggle={(e) => setLyricsOpen(e.currentTarget.open)}>
+          <summary>
+            <span className={styles.detailsLabel}>Lyrics</span>
+            <span className={styles.detailsSummary}>
+              {lyricSections.length
+                ? `${lyricSections.length} sections: ${lyricSections.map((l) => l.label).join(", ")}. For naming sections; students never see them.`
+                : "Optional. Paste them so Draft from YouTube can name verses and choruses from the singing. Students never see them."}
+            </span>
+          </summary>
+          <div className={styles.lyrics}>
+            <p className={styles.hint}>
+              Put each section name on its own line, like <strong>[Verse 2]</strong> or <strong>Chorus</strong>. A chorus sung again can be just its name. Then press Draft from YouTube. The lyrics are only for matching: they stay in the teacher view and aren&apos;t shown on the song page.
+            </p>
+            <label className="field">
+              <span className="visually-hidden">Lyrics</span>
+              <textarea
+                className={`textarea ${styles.lyricsText}`}
+                value={draft.lyrics ?? ""}
+                placeholder={LYRICS_HELP}
+                onChange={(e) => set("lyrics", e.target.value)}
+                autoCapitalize="sentences"
+              />
+            </label>
+          </div>
+        </details>
       </section>
 
       <section className={styles.block} aria-labelledby="video">
@@ -473,6 +533,7 @@ export function SongEditor({ song }: { song?: Song }) {
               playerReady={ytReady}
               videoUrl={draft.youtubeUrl}
               beatsPerBar={draft.beatsPerBar}
+              lyrics={lyricSections}
               player={player}
               onResult={(r) => {
                 setUndo(draft);
@@ -548,7 +609,46 @@ export function SongEditor({ song }: { song?: Song }) {
           <div className={styles.preview}>
             {chart.events.length > 0 && (
               <div className={styles.syncBar} data-tapping={tapIndex !== null || undefined} role="group" aria-label="Sync">
-                {tapIndex !== null ? (
+                {tapIndex === null && renaming && renameTarget ? (
+                  <form
+                    className={styles.renameForm}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      applyRename();
+                    }}
+                  >
+                    <label className="field">
+                      <span>Rename “{renameTarget.label}”</span>
+                      <input
+                        className="input"
+                        value={renaming.name}
+                        enterKeyHint="done"
+                        onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                      />
+                    </label>
+                    <div className={styles.row} role="group" aria-label="Common names">
+                      {SECTION_NAMES.map((n) => (
+                        <button type="button" key={n} className="btn btn-quiet btn-small" aria-pressed={renaming.name === n} onClick={() => setRenaming({ ...renaming, name: n })}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    {repeats > 1 && (
+                      <label className={styles.check}>
+                        <input type="checkbox" checked={renaming.all} onChange={(e) => setRenaming({ ...renaming, all: e.target.checked })} />
+                        Rename all {repeats} sections called “{renameTarget.label}”
+                      </label>
+                    )}
+                    <div className={styles.row}>
+                      <button type="submit" className="btn btn-primary" disabled={!renaming.name.trim()}>
+                        Rename
+                      </button>
+                      <button type="button" className="btn btn-quiet" onClick={() => setRenaming(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : tapIndex !== null ? (
                   <>
                     <p>
                       Tap on <strong>{nextChord?.chord ?? "N.C."}</strong> <span className="muted">({tapIndex + 1} of {chart.events.length})</span>
@@ -597,7 +697,7 @@ export function SongEditor({ song }: { song?: Song }) {
                     <p className={styles.hint}>±0.1s moves just this chord. ±1 beat moves this chord and everything after it, for a beat that was added or missed.</p>
                   </>
                 ) : (
-                  <p className={styles.hint}>Click a chord to fix its timing, or to re-sync from it without starting the song again.</p>
+                  <p className={styles.hint}>Click a chord to fix its timing, or to re-sync from it without starting the song again. Tap a section name to rename it.</p>
                 )}
               </div>
             )}
@@ -616,6 +716,14 @@ export function SongEditor({ song }: { song?: Song }) {
               activeEvent={tapIndex !== null ? -1 : ytState === PLAYING ? eventAt(view.events, time) : -1}
               onPick={pick}
               picked={picked}
+              onRenameSection={
+                tapIndex === null
+                  ? (i) => {
+                      setRenaming({ index: i, name: chart.sections[i]?.label ?? "", all: true });
+                      setPicked(null);
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>

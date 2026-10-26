@@ -5,6 +5,7 @@ import { analyzeAudio, type AnalysisResult } from "@/lib/analysis/analyze";
 import { chordProbabilities, type ChordProbs } from "@/lib/analysis/chordModel";
 import { cqtFrames } from "@/lib/analysis/cqt";
 import { FetchAudioError, fetchYouTubeAudio, type FetchedAudio } from "@/lib/analysis/fetchAudio";
+import { lyricsPrompt, type LyricSection } from "@/lib/analysis/lyrics";
 import { CaptureError, micCaptureSupported, startMicCapture, startTabCapture, tabCaptureSupported, type CaptureHandle } from "@/lib/analysis/capture";
 import { ENDED, PLAYING, type YTPlayer } from "./useYouTube";
 import { useWakeLock } from "./useWakeLock";
@@ -16,6 +17,8 @@ interface Props {
   playerReady: boolean;
   videoUrl: string;
   beatsPerBar: number;
+  /** The teacher's lyric sheet, for naming sections from the singing. */
+  lyrics: LyricSection[];
   player: React.RefObject<YTPlayer | null>;
   onResult: (r: AnalysisResult) => void;
   onUndo?: () => void;
@@ -28,13 +31,13 @@ type Phase =
   | { kind: "downloading"; bytes: number }
   | { kind: "listening" }
   | { kind: "working"; fraction: number; stage: string }
-  | { kind: "done"; result: AnalysisResult }
+  | { kind: "done"; result: AnalysisResult; note?: string }
   | { kind: "error"; message: string };
 
 const noop = () => () => {};
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, player, onResult, onUndo, hasChart }: Props) {
+export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, lyrics, player, onResult, onUndo, hasChart }: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const supported = useSyncExternalStore(noop, tabCaptureSupported, () => true);
   const micSupported = useSyncExternalStore(noop, micCaptureSupported, () => true);
@@ -57,7 +60,8 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     [],
   );
 
-  const analyse = async ({ samples, stems }: FetchedAudio, toVideoTime?: (t: number) => number | null) => {
+  const sung = lyrics.some((l) => l.words.length > 0);
+  const analyse = async ({ samples, stems, words }: FetchedAudio, toVideoTime?: (t: number) => number | null) => {
     // The trained chord model does the chords; if it can't load, the built-in engine still drafts.
     let chordProbs: ChordProbs | undefined;
     try {
@@ -75,10 +79,21 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
       toVideoTime,
       chordProbs,
       stems,
+      // The lyrics only help when the helper heard the words; they go no further than this.
+      ...(sung && words?.length ? { lyrics, words } : {}),
       onProgress: (fraction, stage) => setPhase({ kind: "working", fraction: base + (1 - base) * fraction, stage }),
     });
     onResult(result);
-    setPhase({ kind: "done", result });
+    let note: string | undefined;
+    if (sung && result.sections.from === "chords") {
+      note =
+        words === undefined
+          ? "Sections are named from the chords: the lyrics are only matched when drafting from YouTube."
+          : !words?.length
+            ? "Sections are named from the chords: the home computer didn't send the sung words. It may need the lyrics update, or it was busy."
+            : "Sections are named from the chords: the singing didn't match the lyrics closely enough. Check the lyrics are for this recording.";
+    }
+    setPhase({ kind: "done", result, note });
   };
 
   // Main path: the server fetches the audio from YouTube and streams it here.
@@ -87,7 +102,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
     download.current = ctrl;
     setPhase({ kind: "downloading", bytes: 0 });
     try {
-      const audio = await fetchYouTubeAudio(videoUrl, (bytes) => setPhase({ kind: "downloading", bytes }), ctrl.signal);
+      const audio = await fetchYouTubeAudio(videoUrl, (bytes) => setPhase({ kind: "downloading", bytes }), ctrl.signal, sung ? lyricsPrompt(lyrics) : undefined);
       download.current = null;
       setPhase({ kind: "working", fraction: 0, stage: "Preparing the audio" });
       // The file starts where the video starts, so audio time is video time.
@@ -176,6 +191,7 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
         <>
           <p className="muted">
             The app fetches the song&apos;s audio from YouTube and writes the chords, sections, timings and strum patterns.
+            {sung && " Sections are named from the lyrics you pasted."}
             {hasChart && " It replaces the chart below, and you can undo."}
           </p>
           <button type="button" className="btn btn-primary" onClick={fromYouTube} disabled={disabled}>
@@ -271,14 +287,18 @@ export function AnalysePanel({ disabled, playerReady, videoUrl, beatsPerBar, pla
             </div>
             <div>
               <dt>Sections</dt>
-              <dd>{phase.result.chart.split("\n").filter((l) => l.startsWith("[")).length}</dd>
+              <dd>
+                {phase.result.chart.split("\n").filter((l) => l.startsWith("[")).length}
+                {phase.result.sections.from === "lyrics" ? ", from the lyrics" : ""}
+              </dd>
             </div>
             <div>
               <dt>Chord fit</dt>
               <dd>{confidenceWord(phase.result.confidence.chords)}</dd>
             </div>
           </dl>
-          <p className="muted">This is a draft. Check it against the video, fix any chords, then save.</p>
+          {phase.note && <p className="muted">{phase.note}</p>}
+          <p className="muted">This is a draft. Check it against the video, fix any chords, then save. Tap a section name in the chart to rename it.</p>
           <div className={styles.row}>
             {onUndo && (
               <button

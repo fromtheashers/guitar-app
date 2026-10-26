@@ -13,6 +13,8 @@ export interface HelperJob {
   id: string;
   videoId: string;
   format: HelperFormat;
+  /** Also transcribe the vocals (helper v3+), primed with these lyric lines. */
+  words?: { prompt: string };
 }
 
 export interface HelperAudio {
@@ -28,8 +30,9 @@ interface Pending extends HelperJob {
 
 const ONLINE_MS = 45_000;
 const POLL_MS = 25_000;
-// Long enough for a 15-minute song to be separated on a processor.
+// Long enough for a 15-minute song to be separated on a processor, and its vocals transcribed.
 const JOB_MS = 6 * 60_000;
+const WORDS_JOB_MS = 12 * 60_000;
 
 // Helpers from before version 2 don't know "listen" jobs and would separate them.
 const LISTEN_VERSION = 2;
@@ -72,16 +75,17 @@ export function checkHelperToken(header: string | null): boolean {
 }
 
 /** Ask the helper for a video's audio. Rejects with yt-dlp's error output on failure. */
-export function fetchViaHelper(videoId: string, format: HelperFormat, signal: AbortSignal): Promise<HelperAudio> {
+export function fetchViaHelper(videoId: string, format: HelperFormat, signal: AbortSignal, words?: { prompt: string }): Promise<HelperAudio> {
   return new Promise((resolve, reject) => {
     const job: Pending = {
       id: crypto.randomUUID(),
       videoId,
       format,
+      ...(words ? { words } : {}),
       resolve: (a) => done(() => resolve(a)),
       reject: (e) => done(() => reject(new HelperError(e))),
     };
-    const timer = setTimeout(() => job.reject("ERROR: helper timed out"), JOB_MS);
+    const timer = setTimeout(() => job.reject("ERROR: helper timed out"), words ? WORDS_JOB_MS : JOB_MS);
     const abort = () => job.reject("ERROR: cancelled");
     signal.addEventListener("abort", abort, { once: true });
     function done(fn: () => void) {
@@ -139,4 +143,4 @@ export function finishJob(id: string, result: HelperAudio | { stderr: string }):
   return true;
 }
 
-const publicJob = ({ id, videoId, format }: Pending): HelperJob => ({ id, videoId, format });
+const publicJob = ({ id, videoId, format, words }: Pending): HelperJob => ({ id, videoId, format, ...(words ? { words } : {}) });

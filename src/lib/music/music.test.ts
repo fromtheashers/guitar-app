@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatChord, nashville, parseChord, parseKey, simplifyChord, transposeChord } from "./chords";
-import { parseChart, serializeChart } from "./chart";
+import { parseChart, renameSection, serializeChart } from "./chart";
 import { bestCapo, getInstrument, INSTRUMENTS, shapeMatchesChord, shapesFor } from "./instruments";
 import { presetPattern, strokesForMode } from "./strum";
 
@@ -35,6 +35,15 @@ describe("chords", () => {
 });
 
 describe("chart", () => {
+  it("renames a section, and every section with the same name", () => {
+    const text = "[Verse 1]\n| G |\n[Pre-Chorus]\n| C |\n[Chorus]\n| D |\n[Pre-Chorus]\n| C |";
+    const one = parseChart(renameSection(text, 1, "Verse 2", false), 4).sections.map((s) => s.label);
+    expect(one).toEqual(["Verse 1", "Verse 2", "Chorus", "Pre-Chorus"]);
+    const all = parseChart(renameSection(text, 3, "Verse", true), 4).sections.map((s) => s.label);
+    expect(all).toEqual(["Verse 1", "Verse", "Chorus", "Verse"]);
+    expect(parseChart(renameSection("| G | C |", 0, "Intro", true), 4).sections.map((s) => s.label)).toEqual(["Intro"]);
+  });
+
   it("reads bars, beats, cues and inline chords", () => {
     const text = "[Verse 1]\n> Amazing grace\n| G . . . | C . G . | Em D | % |\n[Chorus]\n[G]How sweet the [D]sound\n";
     const chart = parseChart(text, 4);

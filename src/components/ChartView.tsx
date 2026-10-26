@@ -17,10 +17,12 @@ interface Props {
   /** Editor: each chord becomes its own button, for picking one to re-sync. */
   onPick?: (eventIndex: number) => void;
   picked?: number | null;
+  /** Editor: section names become buttons, for renaming them. */
+  onRenameSection?: (sectionIndex: number) => void;
 }
 
 /** The whole song as rows of bar panes, tinted by section. */
-export function ChartView({ view, beatsPerBar, activeEvent = -1, activeBeat = -1, onSeek, onLoopSection, loopedSection = null, onPick, picked = null }: Props) {
+export function ChartView({ view, beatsPerBar, activeEvent = -1, activeBeat = -1, onSeek, onLoopSection, loopedSection = null, onPick, picked = null, onRenameSection }: Props) {
   if (!view.sections.length) {
     return <p className="muted">No chart yet.</p>;
   }
@@ -31,7 +33,18 @@ export function ChartView({ view, beatsPerBar, activeEvent = -1, activeBeat = -1
         return (
           <section key={si} className={styles.section} data-hue={hue} aria-label={s.label}>
             <header className={styles.head}>
-              <h3 className={styles.label}>{s.label}</h3>
+              {onRenameSection ? (
+                <h3 className={styles.label}>
+                  <button type="button" className={styles.rename} onClick={() => onRenameSection(si)} aria-label={`Rename ${s.label}`}>
+                    {s.label}
+                    <span aria-hidden="true" className={styles.renameMark}>
+                      Rename
+                    </span>
+                  </button>
+                </h3>
+              ) : (
+                <h3 className={styles.label}>{s.label}</h3>
+              )}
               {onLoopSection && s.start !== null && (
                 <button
                   type="button"

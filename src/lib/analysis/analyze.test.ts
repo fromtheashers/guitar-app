@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeAudio } from "./analyze";
 import { SR } from "./features";
 import { parseChart } from "../music/chart";
+import { parseLyrics } from "./lyrics";
 
 // A synthetic band: bass + triad pads for each chord, kick on 1 and 3,
 // snare on 2 and 4, hi-hat eighths.
@@ -89,6 +90,25 @@ describe("analyzeAudio", () => {
 
     // Verse and chorus come back as two repeated sections.
     expect(chart.sections.map((s) => s.label)).toEqual(["Verse 1", "Chorus", "Verse 2", "Chorus"]);
+  }, 60_000);
+
+  it("names sections from the lyrics when the sung words are known", async () => {
+    const verse = ["G", "C", "Em", "D", "G", "C", "Em", "D"];
+    const chorus = ["C", "D", "Em", "C", "C", "D", "G", "G"];
+    const audio = synthSong({ bpm: 100, progression: [verse, verse, chorus] });
+    const sheet = parseLyrics(`[Verse 1]
+Amazing grace how sweet the sound that saved a wretch like me
+[Verse 2]
+Twas grace that taught my heart to fear and grace my fears relieved
+[Chorus]
+My chains are gone I've been set free my God my Saviour has ransomed me`);
+    // Each section's words sung from just after its first downbeat (a bar is 2.4 s).
+    const words = sheet.flatMap((sec, k) => sec.words.map((text, i) => ({ start: k * 19.2 + 0.3 + i * 0.9, end: k * 19.2 + 0.7 + i * 0.9, text })));
+    const result = await analyzeAudio(audio, { beatsPerBar: 4, lyrics: sheet, words });
+    const chart = parseChart(result.chart, 4);
+    expect(result.sections.from).toBe("lyrics");
+    expect(chart.sections.map((s) => s.label)).toEqual(["Verse 1", "Verse 2", "Chorus"]);
+    expect(chart.sections.map((s) => s.bars.length)).toEqual([8, 8, 8]);
   }, 60_000);
 
   it("marks a section with no drums as let-it-ring", async () => {

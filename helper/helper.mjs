@@ -11,6 +11,11 @@
 // can read chords without vocals and strum patterns from the drums alone. Needs
 // ffmpeg (ffmpeg.exe next to this file, "ffmpeg" in config.json, or on PATH). If
 // separation fails, the plain audio is sent instead.
+//
+// When a draft comes with lyrics, separate.py also transcribes the vocals with
+// Whisper (openai-whisper in the same Python) so the site can name sections from the
+// lyrics. "lyricsModel" / "lyricsModelCpu" in separator.json pick the models
+// (default turbo on a free graphics card, small on the processor).
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -35,8 +40,8 @@ const separatorScript = sep.separatorScript ?? path.join(here, "separate.py");
 const models = sep.models ?? (separator ? path.resolve(path.dirname(separator), "..", "..", "models") : undefined);
 // "listen" is for a student playing the song in another key: small AAC, never separated.
 const FORMATS = { m4a: "bestaudio[ext=m4a]/bestaudio", webm: "bestaudio[ext=webm]/bestaudio", listen: "139/140/bestaudio[ext=m4a]/bestaudio" };
-// Tells the site which jobs this helper understands.
-const VERSION = 2;
+// Tells the site which jobs this helper understands (3: sends sung words).
+const VERSION = 3;
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -85,7 +90,7 @@ function run(cmd, args, input, env) {
 }
 
 /** Instruments, drums and vocals as a three-channel WAV, or null to send the plain audio. */
-async function separate(audio) {
+async function separate(audio, job) {
   if (!separator) return null;
   const started = Date.now();
   const decoded = await run(ffmpeg, ["-v", "error", "-i", "pipe:0", "-f", "f32le", "-ac", "2", "-ar", "44100", "pipe:1"], audio);
@@ -93,12 +98,19 @@ async function separate(audio) {
     log("Couldn't decode the audio for separation:", decoded.stderr.trim().split("\n").pop());
     return null;
   }
-  const split = await run(separator, [separatorScript], decoded.out, models ? { TORCH_HOME: models, HF_HOME: path.join(models, "hf") } : {});
+  const env = {
+    ...(models ? { TORCH_HOME: models, HF_HOME: path.join(models, "hf") } : {}),
+    ...(job.words ? { CW_WORDS: "1", CW_PROMPT: String(job.words.prompt ?? "").slice(0, 1000) } : {}),
+    ...(sep.lyricsModel ? { CW_WHISPER_MODEL: sep.lyricsModel } : {}),
+    ...(sep.lyricsModelCpu ? { CW_WHISPER_CPU_MODEL: sep.lyricsModelCpu } : {}),
+  };
+  const split = await run(separator, [separatorScript], decoded.out, env);
   if (split.code !== 0 || split.out.length < 44) {
     log("Separation failed, sending the plain audio:", split.stderr.trim().split("\n").pop());
     return null;
   }
   log(`Separated in ${((Date.now() - started) / 1000).toFixed(1)} s.`);
+  for (const line of split.stderr.split("\n")) if (line.startsWith("NOTE: ")) log(line.slice(6));
   return split.out;
 }
 
@@ -135,7 +147,7 @@ for (;;) {
     log(`Fetching ${job.videoId}…`);
     let result = await download(job);
     if ("audio" in result && job.format !== "listen") {
-      const stems = await separate(result.audio);
+      const stems = await separate(result.audio, job);
       if (stems) result = { audio: stems, stems: true };
     }
     log("audio" in result ? `Sent ${(result.audio.length / 1048576).toFixed(1)} MB.` : `Failed: ${result.stderr.split("\n").filter(Boolean).pop()}`);

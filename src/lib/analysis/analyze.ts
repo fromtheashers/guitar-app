@@ -18,6 +18,7 @@ import {
 } from "./features";
 import type { ChordProbs } from "./chordModel";
 import { BeatHarmony, detectKey, labelBeats, slashBass, STATES } from "./harmony";
+import { alignLyrics, confidentVisit, sectionsFromLyrics, type LyricSection, type TimedWord } from "./lyrics";
 import { beatProbabilities, chordPrior, FAMILY_STATES, labelBeatsWithModel } from "./modelHarmony";
 
 export interface AnalysisOptions {
@@ -30,6 +31,10 @@ export interface AnalysisOptions {
   chordProbs?: ChordProbs;
   /** Separated tracks from the home helper: drums for strum patterns and downbeats, instruments for harmony. */
   stems?: { instruments: Float32Array; drums: Float32Array };
+  /** The teacher's lyric sheet (lyrics.ts), to name sections by what is sung. */
+  lyrics?: LyricSection[];
+  /** Words heard in the separated vocals, timed in seconds into the audio. */
+  words?: TimedWord[];
 }
 
 export interface AnalysisResult {
@@ -42,6 +47,8 @@ export interface AnalysisResult {
   /** Strum pattern per section kind ("verse", "chorus", ...). */
   patterns: Record<string, StrumPattern>;
   confidence: { tempo: number; chords: number };
+  /** Where the section names came from; with lyrics, how many sung sections were heard clearly. */
+  sections: { from: "lyrics" | "chords"; heard?: number };
 }
 
 interface Bar {
@@ -175,7 +182,34 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
     const st = states[state];
     return st ? `${st.root}${st.minor ? "m" : ""}` : "N";
   };
-  const sections = findSections(bars, coarse);
+  let sections = findSections(bars, coarse);
+  let sectionsFrom: AnalysisResult["sections"] = { from: "chords" };
+  if (opts.lyrics?.length && opts.words?.length && bars.length) {
+    // The words sung say which section is which; chord patterns fill in where they're unclear.
+    progress(0.85, "Matching the lyrics");
+    await tick();
+    const visits = alignLyrics(opts.lyrics, opts.words);
+    const chordSections: { from: number; label: string }[] = [];
+    let at = 0;
+    for (const s of sections) {
+      chordSections.push({ from: at, label: s.label });
+      at += s.bars.length;
+    }
+    const lastBar = bars[bars.length - 1];
+    const found = sectionsFromLyrics({
+      barStarts: [...bars.map((b) => onsetFrameTime(b.beatFrames[0])), onsetFrameTime(lastBar.beatFrames[lastBar.beatFrames.length - 1])],
+      barSigs: bars.map((b) => b.halves.map((h) => coarse(h.state)).join(" ")),
+      beat: ibi,
+      sheet: opts.lyrics,
+      visits,
+      wordTimes: opts.words.map((w) => w.start),
+      chordSections,
+    });
+    if (found) {
+      sections = found.map((f) => ({ label: f.label, bars: bars.slice(f.from, f.to) }));
+      sectionsFrom = { from: "lyrics", heard: visits.filter(confidentVisit).length };
+    }
+  }
 
   progress(0.9, "Turning the drums into strum patterns");
   await tick();
@@ -232,6 +266,7 @@ export async function analyzeAudio(samples: Float32Array, opts: AnalysisOptions)
     timings,
     patterns,
     confidence: { tempo: round2(tempo.confidence), chords: round2(chordConfidence) },
+    sections: sectionsFrom,
   };
 }
 

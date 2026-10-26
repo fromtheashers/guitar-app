@@ -69,6 +69,7 @@ export function songInput(body: unknown): { ok: true; value: SongInput } | { ok:
       timings,
       patterns,
       notes: str(b.notes, 5000),
+      ...(typeof b.lyrics === "string" ? { lyrics: str(b.lyrics, 20_000) } : {}),
     },
   };
 }

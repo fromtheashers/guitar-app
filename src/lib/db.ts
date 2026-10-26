@@ -31,6 +31,13 @@ create table if not exists songs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Teacher-only: lyrics used to name sections when drafting. Kept apart from songs so
+-- nothing that serves students (song pages, the public API, setlists) reads them.
+create table if not exists song_lyrics (
+  song_id uuid primary key references songs(id) on delete cascade,
+  lyrics text not null default '',
+  updated_at timestamptz not null default now()
+);
 create table if not exists setlists (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -70,7 +77,10 @@ export interface Song {
   updatedAt: string;
 }
 
-export type SongInput = Omit<Song, "id" | "updatedAt">;
+export type SongInput = Omit<Song, "id" | "updatedAt"> & {
+  /** Teacher-only lyric sheet; left unchanged when missing. Never part of `Song`. */
+  lyrics?: string;
+};
 
 export interface SetlistItem {
   songId: string;
@@ -171,7 +181,9 @@ export async function createSong(s: SongInput): Promise<Song> {
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
     [s.title, s.artist, s.youtubeUrl, s.spotifyUrl, s.originalKey, s.bpm, s.beatsPerBar, s.chart, JSON.stringify(s.timings), JSON.stringify(s.patterns), s.notes],
   );
-  return toSong(rows[0]);
+  const song = toSong(rows[0]);
+  if (s.lyrics !== undefined) await saveLyrics(db, song.id, s.lyrics);
+  return song;
 }
 
 export async function updateSong(id: string, s: SongInput): Promise<Song | null> {
@@ -182,7 +194,29 @@ export async function updateSong(id: string, s: SongInput): Promise<Song | null>
        chart=$9, timings=$10, patterns=$11, notes=$12, updated_at=now() where id=$1 returning *`,
     [id, s.title, s.artist, s.youtubeUrl, s.spotifyUrl, s.originalKey, s.bpm, s.beatsPerBar, s.chart, JSON.stringify(s.timings), JSON.stringify(s.patterns), s.notes],
   );
-  return rows[0] ? toSong(rows[0]) : null;
+  if (!rows[0]) return null;
+  if (s.lyrics !== undefined) await saveLyrics(db, id, s.lyrics);
+  return toSong(rows[0]);
+}
+
+/** The teacher's lyric sheet for a song. Call only behind the teacher check. */
+export async function getLyrics(id: string): Promise<string> {
+  if (!isId(id)) return "";
+  const db = await ready();
+  const { rows } = await db.query("select lyrics from song_lyrics where song_id = $1", [id]);
+  return (rows[0]?.lyrics as string | undefined) ?? "";
+}
+
+async function saveLyrics(db: Pool, id: string, lyrics: string) {
+  if (!lyrics.trim()) {
+    await db.query("delete from song_lyrics where song_id = $1", [id]);
+    return;
+  }
+  await db.query(
+    `insert into song_lyrics (song_id, lyrics) values ($1, $2)
+     on conflict (song_id) do update set lyrics = excluded.lyrics, updated_at = now()`,
+    [id, lyrics],
+  );
 }
 
 export async function deleteSong(id: string): Promise<boolean> {

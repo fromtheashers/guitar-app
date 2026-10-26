@@ -131,6 +131,39 @@
   font-size: 14px;
 }
 
+.lyrics {
+  display: grid;
+  gap: 8px;
+  padding: 4px 16px 16px;
+}
+
+.lyrics .hint {
+  margin: 0;
+}
+
+.lyricsText {
+  min-height: 240px;
+}
+
+.renameForm {
+  display: grid;
+  gap: 10px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
 .details .fields {
   padding: 4px 16px 16px;
 }

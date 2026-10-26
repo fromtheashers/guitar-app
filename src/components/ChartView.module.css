@@ -45,6 +45,33 @@
   color: var(--ink-2);
 }
 
+/* Editor: tap a section name to rename it. Tall enough for a thumb. */
+.rename {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  margin: -12px 0 -12px -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rename:hover,
+.rename:focus-visible {
+  background: var(--surface-3);
+}
+
+.renameMark {
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .loop[aria-pressed="true"] {
   color: var(--amber);
 }
