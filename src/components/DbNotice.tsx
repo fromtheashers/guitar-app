@@ -8,7 +8,7 @@ export function DbNotice({ error }: { error: unknown }) {
       <h1>{missing ? "The database isn't connected yet" : "Couldn't reach the database"}</h1>
       <p>
         {missing
-          ? "Add your Neon connection string as DATABASE_URL in Render's environment settings, then redeploy."
+          ? "Add your Neon connection string as DATABASE_URL in Vercel's Environment Variables (Settings), then redeploy."
           : "The database may be waking up. Wait a few seconds and refresh the page."}
       </p>
     </div>

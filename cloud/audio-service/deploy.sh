@@ -1,7 +1,7 @@
 #!/bin/bash
 # Switches on (or updates) the audio service on Google Cloud Run. Run it in Cloud
 # Shell:  bash guitar-app/cloud/audio-service/deploy.sh <project id>
-# It prints the two values to add to Render. Re-running it keeps the same password.
+# It prints the two values to add to Vercel. Re-running it keeps the same password.
 set -euo pipefail
 PROJECT="${1:?Give the project ID, e.g. bash deploy.sh guitar-app-123456}"
 REGION=us-central1
@@ -32,6 +32,6 @@ echo
 echo "Checking YouTube lets the service in…"
 curl -s -H "Authorization: Bearer $TOKEN" "$URL/check?v=V39qPqyyB2A" || true
 echo
-echo "Add these two in Render (guitar-app → Environment):"
+echo "Add these two in Vercel (guitar-app → Settings → Environment Variables), then redeploy:"
 echo "  AUDIO_SERVICE_URL   = $URL"
 echo "  AUDIO_SERVICE_TOKEN = $TOKEN"

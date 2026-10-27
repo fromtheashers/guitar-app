@@ -1,5 +1,5 @@
 # One-time setup for the Chord Window YouTube helper on Windows.
-# Run in PowerShell:  powershell -ExecutionPolicy Bypass -File setup.ps1 -Site https://your-site.onrender.com
+# Run in PowerShell:  powershell -ExecutionPolicy Bypass -File setup.ps1 -Site https://your-site.vercel.app
 param([Parameter(Mandatory = $true)][string]$Site)
 $ErrorActionPreference = "Stop"
 $dir = Join-Path $env:LOCALAPPDATA "ChordWindowHelper"
@@ -13,8 +13,10 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 $node = (Get-Command node).Source
 
-# yt-dlp, refreshed on every run of this script.
+# yt-dlp, and cloudflared for the tunnel the site's visitors reach the helper through,
+# both refreshed on every run of this script.
 Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $dir "yt-dlp.exe")
+Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile (Join-Path $dir "cloudflared.exe")
 
 # A random password shared with the site. Keep the existing one if set up before.
 $configPath = Join-Path $dir "config.json"
@@ -30,8 +32,8 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 Register-ScheduledTask -TaskName "ChordWindowHelper" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName "ChordWindowHelper"
 
-# Show the password so it can be pasted into Render (never sent anywhere else).
-$tokenFile = Join-Path $dir "PASTE-INTO-RENDER.txt"
+# Show the password so it can be pasted into Vercel (never sent anywhere else).
+$tokenFile = Join-Path $dir "PASTE-INTO-VERCEL.txt"
 "HELPER_TOKEN`r`n`r`n$token" | Set-Content -Encoding utf8 $tokenFile
 Start-Process notepad.exe $tokenFile
 Write-Host "Helper installed and running from $dir"

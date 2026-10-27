@@ -10,7 +10,8 @@ function pool(): Pool {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set. Add your Neon connection string to the environment.");
   }
-  globalForDb.pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
+  // Serverless (Vercel): few connections per instance, closed soon after use.
+  globalForDb.pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 3, idleTimeoutMillis: 10_000 });
   return globalForDb.pool;
 }
 
@@ -37,6 +38,14 @@ create table if not exists song_lyrics (
   song_id uuid primary key references songs(id) on delete cascade,
   lyrics text not null default '',
   updated_at timestamptz not null default now()
+);
+-- Where the helper on the teacher's computer can be reached right now (its tunnel
+-- address changes when it restarts). One row; no audio is ever kept.
+create table if not exists helper_status (
+  id integer primary key default 1 check (id = 1),
+  url text not null,
+  version integer not null default 0,
+  seen_at timestamptz not null default now()
 );
 create table if not exists setlists (
   id uuid primary key default gen_random_uuid(),
@@ -263,4 +272,24 @@ export async function deleteSetlist(id: string): Promise<boolean> {
   const db = await ready();
   const { rowCount } = await db.query("delete from setlists where id = $1", [id]);
   return (rowCount ?? 0) > 0;
+}
+
+export interface HelperStatus {
+  url: string;
+  version: number;
+  seenAt: Date;
+}
+
+export async function getHelperStatus(): Promise<HelperStatus | null> {
+  const db = await ready();
+  const { rows } = await db.query("select url, version, seen_at from helper_status where id = 1");
+  return rows[0] ? { url: rows[0].url, version: rows[0].version, seenAt: rows[0].seen_at } : null;
+}
+
+export async function setHelperStatus(url: string, version: number): Promise<void> {
+  const db = await ready();
+  await db.query(
+    "insert into helper_status (id, url, version, seen_at) values (1, $1, $2, now()) on conflict (id) do update set url = $1, version = $2, seen_at = now()",
+    [url, version],
+  );
 }

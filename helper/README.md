@@ -1,10 +1,14 @@
 # YouTube helper
 
-Runs on a home computer so YouTube downloads come from a home connection, which YouTube doesn't block. It polls the site for work; no tunnel or router changes are needed. Audio stays in memory and is never saved.
+Runs on a home computer so YouTube downloads come from a home connection, which YouTube doesn't block. Audio stays in memory and is never saved.
 
-**Windows setup:** run `setup.ps1 -Site https://your-site.onrender.com` in PowerShell. It installs Node (if missing) and yt-dlp into `%LOCALAPPDATA%\ChordWindowHelper`, creates a password, registers a task that starts the helper at sign-in, and opens `PASTE-INTO-RENDER.txt`. Add that value as `HELPER_TOKEN` in Render's environment settings.
+The site (on Vercel) never handles audio. The helper runs a small server on `127.0.0.1:47321` and reaches the internet through a free Cloudflare quick tunnel (`cloudflared`, no account or router changes). Every minute it tells the site its tunnel address. When a browser needs audio, the site signs a two-minute pass with the shared password (`HELPER_TOKEN`); the browser hands it to the helper (`POST /jobs`), then collects the audio (`GET /jobs/<id>`, 202 until ready, sent once). Jobs run one at a time.
 
-Re-run the script now and then to update yt-dlp when YouTube changes something.
+**Windows setup:** run `setup.ps1 -Site https://your-site.vercel.app` in PowerShell. It installs Node (if missing), yt-dlp and cloudflared into `%LOCALAPPDATA%\ChordWindowHelper`, creates a password, registers a task that starts the helper at sign-in, and opens `PASTE-INTO-VERCEL.txt`. Add that value as `HELPER_TOKEN` in Vercel's Environment Variables, then redeploy.
+
+**Moving from the old (Render) helper:** run `move-to-vercel.ps1 -Site https://your-site.vercel.app` from the folder with the new `helper.mjs`. It keeps the password and separation settings.
+
+Re-run the setup script now and then to update yt-dlp when YouTube changes something.
 
 ## Optional: vocal and drum separation
 

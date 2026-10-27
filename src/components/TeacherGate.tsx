@@ -7,7 +7,7 @@ export async function teacherGate() {
     return (
       <div style={{ maxWidth: 560 }}>
         <h1>Set a teacher passcode first</h1>
-        <p className="muted">Add EDITOR_PASSCODE in Render&apos;s environment settings, then redeploy.</p>
+        <p className="muted">Add EDITOR_PASSCODE in Vercel&apos;s Environment Variables (Settings), then redeploy.</p>
       </div>
     );
   }

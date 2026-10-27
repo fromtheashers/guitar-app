@@ -1,6 +1,8 @@
-// Downloads a video's audio through the app's own server route and decodes it to
-// mono samples at the analysis rate. Everything stays in memory.
+// Downloads a video's audio (the site's route says where from, usually the helper on
+// the teacher's computer) and decodes it to mono samples at the analysis rate.
+// Everything stays in memory.
 
+import { fetchFromSource, SourceError, type AudioSource, type SourceAudio } from "../audioSource";
 import { SR } from "./features";
 import type { TimedWord } from "./lyrics";
 
@@ -34,30 +36,20 @@ export async function fetchYouTubeAudio(url: string, onBytes?: (bytes: number) =
     if (signal?.aborted) throw e;
     throw new FetchAudioError("Couldn't reach the app. Check your connection and try again.");
   }
-  if (!res.ok || !res.body) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new FetchAudioError(body.error ?? "Couldn't fetch the audio from YouTube.");
-  }
+  const body = (await res.json().catch(() => ({}))) as { error?: string; source?: AudioSource };
+  if (!res.ok || !body.source) throw new FetchAudioError(body.error ?? "Couldn't fetch the audio from YouTube.");
 
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    total += value.length;
-    onBytes?.(total);
+  // The site only says where to fetch from; the audio comes straight from the helper.
+  let fetched: SourceAudio;
+  try {
+    fetched = await fetchFromSource(body.source, { signal, onBytes });
+  } catch (e) {
+    if (e instanceof SourceError) throw new FetchAudioError(e.message);
+    throw e;
   }
-  const bytes = new Uint8Array(total);
-  let o = 0;
-  for (const c of chunks) {
-    bytes.set(c, o);
-    o += c.length;
-  }
-  chunks.length = 0;
+  const { bytes } = fetched;
 
-  const stemmed = res.headers.get("x-stems") === "1";
+  const stemmed = fetched.stems;
   // Separated songs arrive as two WAVs back to back: harmony + drums (stereo), then the
   // rest (mono), and then, if asked for, the sung words as JSON.
   const riff = (at: number) => (at + 8 <= bytes.length && String.fromCharCode(...bytes.subarray(at, at + 4)) === "RIFF" ? new DataView(bytes.buffer).getUint32(at + 4, true) + 8 : 0);

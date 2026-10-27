@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ShiftReply, ShiftRequest } from "@/lib/audio/shift.worker";
+import { fetchFromSource, type AudioSource } from "@/lib/audioSource";
 import { PLAYING, type YTPlayer } from "./useYouTube";
 
 // Plays the song in the student's key. YouTube's player can't change pitch, so the
-// site fetches the song's audio (never stored), this page shifts it in a worker,
-// and plays it in step with the video, which is muted meanwhile. Anything that goes
+// page fetches the song's audio from the sources the site names (never stored),
+// shifts it in a worker, and plays it in step with the video, which is muted meanwhile. Anything that goes
 // wrong leaves the video playing as normal, in the original key.
 
 export type ShiftStatus =
@@ -204,11 +205,19 @@ function makeContext(): AudioContext {
 
 async function load(songId: string, worker: RefObject<Worker | null>): Promise<void> {
   const res = await fetch(`/api/song-audio/${encodeURIComponent(songId)}`, { cache: "no-store" });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? "Couldn't get the song's audio.");
+  const body = (await res.json().catch(() => null)) as { error?: string; sources?: AudioSource[] } | null;
+  if (!res.ok || !body?.sources?.length) throw new Error(body?.error ?? "Couldn't get the song's audio.");
+  // Google Cloud first, then the teacher's computer.
+  let bytes: ArrayBuffer | null = null;
+  for (const source of body.sources) {
+    try {
+      bytes = (await fetchFromSource(source)).bytes.buffer;
+      break;
+    } catch (e) {
+      console.warn(`Song audio from ${source.kind} failed:`, e instanceof Error ? e.message : e);
+    }
   }
-  const bytes = await res.arrayBuffer();
+  if (!bytes) throw new Error("Couldn't get the song's audio this time.");
   let decoded: AudioBuffer;
   try {
     decoded = await new OfflineAudioContext(1, 1, SAMPLE_RATE).decodeAudioData(bytes);

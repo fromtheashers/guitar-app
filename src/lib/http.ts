@@ -25,7 +25,7 @@ export async function readJson(req: Request): Promise<unknown> {
 export function dbError(e: unknown) {
   console.error(e);
   const msg = e instanceof Error && e.message.includes("DATABASE_URL")
-    ? "The database isn't connected yet. Add DATABASE_URL in Render's environment settings."
+    ? "The database isn't connected yet. Add DATABASE_URL in Vercel's Environment Variables (Settings)."
     : "Something went wrong talking to the database. Try again in a moment.";
   return problem(msg, 500);
 }

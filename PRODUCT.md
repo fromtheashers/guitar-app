@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Next.js (App Router, TypeScript) on Render's free web service, with a Neon Postgres database. Chosen by Claude after the teacher named Render and Neon as the accounts they already have.
+Next.js (App Router, TypeScript) on Vercel (moved from Render's free web service in October 2026), with a Neon Postgres database.
 
 ## Users
 

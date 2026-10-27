@@ -16,7 +16,7 @@ export default async function TeacherPage() {
     return (
       <div className={styles.notice}>
         <h1>Set a teacher passcode first</h1>
-        <p className="muted">Add EDITOR_PASSCODE in Render&apos;s environment settings, then redeploy. Anyone with the passcode can add and edit songs.</p>
+        <p className="muted">Add EDITOR_PASSCODE in Vercel&apos;s Environment Variables (Settings), then redeploy. Anyone with the passcode can add and edit songs.</p>
       </div>
     );
   }
