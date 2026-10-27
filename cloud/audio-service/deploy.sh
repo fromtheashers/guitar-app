@@ -12,20 +12,40 @@ gcloud config set project "$PROJECT" --quiet
 echo "Switching on the Google Cloud services this needs (takes a minute the first time)…"
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com compute.googleapis.com --quiet
 
-# New projects build with the default compute account, which needs permission to build.
+# New projects build with the default compute account. It only appears a little
+# after the Compute API is switched on, and it needs permission to build.
 NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+BUILDER="${NUMBER}-compute@developer.gserviceaccount.com"
+for i in $(seq 1 24); do
+  gcloud iam service-accounts describe "$BUILDER" --quiet >/dev/null 2>&1 && break
+  [ "$i" = 1 ] && echo "Waiting for Google Cloud to create its build account…"
+  sleep 5
+done
+gcloud iam service-accounts enable "$BUILDER" --quiet >/dev/null 2>&1 || true
 gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="serviceAccount:${NUMBER}-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:${BUILDER}" \
   --role=roles/run.builder --condition=None --quiet >/dev/null
 
 TOKEN="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json 2>/dev/null \
   | python3 -c 'import json,sys; e=json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env",[]); print(next((v["value"] for v in e if v["name"]=="AUDIO_TOKEN"),""))' 2>/dev/null || true)"
 [ -n "$TOKEN" ] || TOKEN="$(openssl rand -hex 24)"
 
+deploy() {
+  gcloud run deploy "$SERVICE" --source "$HERE" --region "$REGION" \
+    --allow-unauthenticated --max-instances 2 --memory 512Mi --cpu 1 --timeout 120 \
+    --set-env-vars "AUDIO_TOKEN=$TOKEN" --quiet
+}
 echo "Building and starting the audio service (about 3 minutes)…"
-gcloud run deploy "$SERVICE" --source "$HERE" --region "$REGION" \
-  --allow-unauthenticated --max-instances 2 --memory 512Mi --cpu 1 --timeout 120 \
-  --set-env-vars "AUDIO_TOKEN=$TOKEN" --quiet
+if ! deploy; then
+  # New permissions can take a minute or two to reach Cloud Build.
+  echo "The first try didn't go through; Google Cloud may still be setting up permissions. Trying again in 90 seconds…"
+  sleep 90
+  if ! deploy; then
+    echo
+    echo "It still didn't work. Copy the red lines above (from 'ERROR') and send them to Claude."
+    exit 1
+  fi
+fi
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
 echo
